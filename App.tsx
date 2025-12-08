@@ -76,8 +76,14 @@ const App: React.FC = () => {
       
       setResult({
         accuracy: data.metrics.accuracy,
+        precision: data.metrics.precision,
+        recall: data.metrics.recall,
+        f1_score: data.metrics.f1_score,
         featureImportance: data.feature_importance,
         confusionMatrix: data.confusion_matrix,
+        warning: data.warning || null,
+        features_used: data.features_used || [],
+        features_skipped: data.features_skipped || [],
         predictions: [] 
       });
       setStatus(AnalysisStatus.SUCCESS);

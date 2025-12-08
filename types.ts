@@ -10,6 +10,9 @@ export interface Dataset {
 
 export interface ModelResult {
   accuracy: number;
+  precision?: number;
+  recall?: number;
+  f1_score?: number;
   featureImportance: Array<{ name: string; value: number }>;
   confusionMatrix: number[][];
   warning?: string | null;

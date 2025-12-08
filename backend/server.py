@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
 
 app = FastAPI()
 
@@ -134,6 +134,9 @@ def train_random_forest(request: TrainRequest):
         y_pred = clf.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
         cm = confusion_matrix(y_test, y_pred)
+        
+        # Calculate Precision, Recall, F1
+        precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='weighted', zero_division=0)
 
         importances = clf.feature_importances_
         feature_names = X.columns
@@ -146,7 +149,10 @@ def train_random_forest(request: TrainRequest):
         return {
             "status": "success",
             "metrics": {
-                "accuracy": float(acc)
+                "accuracy": float(acc),
+                "precision": float(precision),
+                "recall": float(recall),
+                "f1_score": float(f1)
             },
             "feature_importance": feature_imp_list,
             "confusion_matrix": cm.tolist(),

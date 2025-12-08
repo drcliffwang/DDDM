@@ -136,6 +136,83 @@ const ResultsDashboard: React.FC<Props> = ({ result }) => {
             </div>
           </div>
 
+          {/* Precision, Recall, F1 Scores */}
+          {(result.precision !== undefined || result.recall !== undefined || result.f1_score !== undefined) && (
+            <div className="lg:col-span-3 bg-white rounded-xl p-6 border border-slate-200">
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <List size={18} className="text-purple-500" />
+                Classification Metrics
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Precision */}
+                {result.precision !== undefined && (
+                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-purple-900">Precision 精確率</span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        result.precision >= 0.8 ? 'bg-green-100 text-green-700' :
+                        result.precision >= 0.6 ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {result.precision >= 0.8 ? 'High' : result.precision >= 0.6 ? 'Fair' : 'Low'}
+                      </span>
+                    </div>
+                    <p className="text-3xl font-bold text-purple-900 mb-1">
+                      {(result.precision * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      預測為正類中，實際為正類的比例
+                    </p>
+                  </div>
+                )}
+
+                {/* Recall */}
+                {result.recall !== undefined && (
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-blue-900">Recall 召回率</span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        result.recall >= 0.8 ? 'bg-green-100 text-green-700' :
+                        result.recall >= 0.6 ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {result.recall >= 0.8 ? 'High' : result.recall >= 0.6 ? 'Fair' : 'Low'}
+                      </span>
+                    </div>
+                    <p className="text-3xl font-bold text-blue-900 mb-1">
+                      {(result.recall * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      實際為正類中，被正確預測的比例
+                    </p>
+                  </div>
+                )}
+
+                {/* F1 Score */}
+                {result.f1_score !== undefined && (
+                  <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-emerald-900">F1 Score F1分數</span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        result.f1_score >= 0.8 ? 'bg-green-100 text-green-700' :
+                        result.f1_score >= 0.6 ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {result.f1_score >= 0.8 ? 'High' : result.f1_score >= 0.6 ? 'Fair' : 'Low'}
+                      </span>
+                    </div>
+                    <p className="text-3xl font-bold text-emerald-900 mb-1">
+                      {(result.f1_score * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      精確率與召回率的調和平均數
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
