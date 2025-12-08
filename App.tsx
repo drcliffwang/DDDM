@@ -7,6 +7,7 @@ import EDAStats from './components/EDAStats';
 import DataVisualization from './components/DataVisualization';
 import FeatureSelection from './components/FeatureSelection';
 import ResultsDashboard from './components/ResultsDashboard';
+import PredictionPanel from './components/PredictionPanel';
 
 // Environment-aware API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -185,6 +186,10 @@ const App: React.FC = () => {
         {result && status === AnalysisStatus.SUCCESS && (
           <div className="animate-fade-in-up delay-300">
             <ResultsDashboard result={result} />
+            <PredictionPanel 
+              features={result.features_used || []} 
+              featuresUsed={result.features_used || []} 
+            />
           </div>
         )}
 
