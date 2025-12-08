@@ -177,6 +177,66 @@ def train_random_forest(request: TrainRequest):
         print(f"INTERNAL ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
 
+@app.post("/predict")
+def predict_model(request: dict):
+    """Predict target using trained model"""
+    global model_artifact
+    
+    if not model_artifact:
+        raise HTTPException(status_code=400, detail="No model trained yet. Please train a model first.")
+    
+    try:
+        data = request.get('data')
+        if not data:
+            raise HTTPException(status_code=400, detail="No data provided for prediction.")
+
+        # Create DataFrame from input
+        df = pd.DataFrame([data])
+        
+        # Handle numeric conversion (same as training)
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                try:
+                    df[col] = pd.to_numeric(df[col], errors='ignore')
+                except:
+                    pass
+        
+        # One-Hot Encoding
+        df = pd.get_dummies(df)
+        
+        # Align columns with training data
+        train_cols = model_artifact['train_columns']
+        # Add missing columns with 0
+        for col in train_cols:
+            if col not in df.columns:
+                df[col] = 0
+                
+        # select only training columns in correct order
+        X = df[train_cols]
+        X = X.fillna(0)
+        
+        # Predict
+        clf = model_artifact['model']
+        prediction = clf.predict(X)[0]
+        
+        # Get probability if available
+        try:
+            proba = clf.predict_proba(X)[0].tolist()
+            classes = clf.classes_.tolist()
+            probabilities = {str(c): float(p) for c, p in zip(classes, proba)}
+        except:
+            probabilities = None
+            
+        return {
+            "status": "success",
+            "prediction": str(prediction),
+            "probabilities": probabilities
+        }
+
+    except Exception as e:
+        print(f"PREDICTION ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction Error: {str(e)}")
+
 @app.post("/statistics")
 def get_statistics(request: TrainRequest):
     """Calculate descriptive statistics for the dataset"""
