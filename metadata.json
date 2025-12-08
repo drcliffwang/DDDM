@@ -1,0 +1,5 @@
+{
+  "name": "Python Data Analysis",
+  "description": "A professional-grade Data Science interface. This project demonstrates the React+Python architecture: React handles the interactive UI, file parsing, and visualization, while the accompanying Python script (see backend/server.py) would handle the heavy machine learning logic.",
+  "requestFramePermissions": []
+}

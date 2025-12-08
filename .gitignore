@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+# Build outputs
+dist/
+*.pyc
+# Environment files (DON'T upload to GitHub)
+.env.local
+.env
+# OS files
+.DS_Store
+*.log
