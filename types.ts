@@ -9,12 +9,18 @@ export interface Dataset {
 }
 
 export interface ModelResult {
-  accuracy: number;
+  model_type?: 'classification' | 'regression';
+  accuracy?: number;
   precision?: number;
   recall?: number;
   f1_score?: number;
+  // Regression metrics
+  r2_score?: number;
+  rmse?: number;
+  mae?: number;
+  
   featureImportance: Array<{ name: string; value: number }>;
-  confusionMatrix: number[][];
+  confusionMatrix: number[][]; // Empty for regression
   warning?: string | null;
   features_used?: string[];
   features_skipped?: string[];

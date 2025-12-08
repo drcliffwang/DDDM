@@ -46,36 +46,51 @@ const ResultsDashboard: React.FC<Props> = ({ result }) => {
 
         <div className="ml-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Accuracy Card */}
+          
+          {/* Main Metric Card (Accuracy or R2) */}
           <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 flex flex-col items-center justify-center text-center">
             <div className="p-3 bg-white rounded-full shadow-sm mb-4">
-              <Target className={result.accuracy >= 0.7 ? "text-green-500" : result.accuracy >= 0.5 ? "text-amber-500" : "text-red-500"} size={32} />
+              <Target className={result.model_type === 'regression' || !result.model_type ? "text-blue-500" : result.accuracy && result.accuracy >= 0.7 ? "text-green-500" : "text-amber-500"} size={32} />
             </div>
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide">Model Accuracy</h3>
-            <p className="text-4xl font-extrabold text-slate-900 mt-2">
-              {(result.accuracy * 100).toFixed(1)}%
-            </p>
-            {/* Dynamic confidence based on accuracy */}
-            {result.accuracy >= 0.8 ? (
-              <span className="text-xs text-green-600 font-medium mt-1 px-2 py-1 bg-green-100 rounded-full">
-                High Confidence
-              </span>
-            ) : result.accuracy >= 0.7 ? (
-              <span className="text-xs text-green-600 font-medium mt-1 px-2 py-1 bg-green-100 rounded-full">
-                Good
-              </span>
-            ) : result.accuracy >= 0.5 ? (
-              <span className="text-xs text-amber-600 font-medium mt-1 px-2 py-1 bg-amber-100 rounded-full">
-                Fair (Need Improvement)
-              </span>
+            
+            {result.model_type === 'regression' ? (
+                <>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide">R² Score (Model Fit)</h3>
+                    <p className="text-4xl font-extrabold text-slate-900 mt-2">
+                    {result.r2_score?.toFixed(3) || "0.000"}
+                    </p>
+                    <span className="text-xs text-blue-600 font-medium mt-1 px-2 py-1 bg-blue-100 rounded-full">
+                        Regression Model
+                    </span>
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs w-full">
+                        <div className="bg-white p-2 rounded border border-slate-200">
+                            <div className="text-slate-400">RMSE</div>
+                            <div className="font-bold">{result.rmse?.toFixed(2)}</div>
+                        </div>
+                        <div className="bg-white p-2 rounded border border-slate-200">
+                            <div className="text-slate-400">MAE</div>
+                            <div className="font-bold">{result.mae?.toFixed(2)}</div>
+                        </div>
+                    </div>
+                </>
             ) : (
-              <span className="text-xs text-red-600 font-medium mt-1 px-2 py-1 bg-red-100 rounded-full">
-                Poor (Check Data/Features)
-              </span>
+                <>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide">Model Accuracy</h3>
+                    <p className="text-4xl font-extrabold text-slate-900 mt-2">
+                    {((result.accuracy || 0) * 100).toFixed(1)}%
+                    </p>
+                    {result.accuracy && result.accuracy >= 0.8 ? (
+                    <span className="text-xs text-green-600 font-medium mt-1 px-2 py-1 bg-green-100 rounded-full">High Confidence</span>
+                    ) : result.accuracy && result.accuracy >= 0.7 ? (
+                    <span className="text-xs text-green-600 font-medium mt-1 px-2 py-1 bg-green-100 rounded-full">Good</span>
+                    ) : (
+                    <span className="text-xs text-amber-600 font-medium mt-1 px-2 py-1 bg-amber-100 rounded-full">Fair</span>
+                    )}
+                </>
             )}
-            {/* Show test set size warning */}
+            
             <div className="mt-3 text-xs text-slate-500">
-              Test predictions: {result.confusionMatrix.flat().reduce((a, b) => a + b, 0)}
+               Test Set Analysis
             </div>
           </div>
 
@@ -110,31 +125,34 @@ const ResultsDashboard: React.FC<Props> = ({ result }) => {
             </div>
           </div>
 
-          {/* Confusion Matrix (Simplified Visualization) */}
+          {/* Confusion Matrix OR Regression Explanation */}
+          {result.model_type !== 'regression' && result.confusionMatrix && result.confusionMatrix.length > 0 && (
           <div className="lg:col-span-3 bg-white rounded-xl p-6 border border-slate-200">
             <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Layers size={18} className="text-orange-500" />
               Confusion Matrix
             </h3>
-            <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+            {/* ... Existing Confusion Matrix Code ... */}
+              <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
               <div className="bg-indigo-50 p-4 rounded-lg text-center border border-indigo-100">
                 <span className="block text-xs text-indigo-600 font-bold uppercase">True Positive</span>
-                <span className="block text-2xl font-bold text-indigo-900">{result.confusionMatrix[0][0]}</span>
+                <span className="block text-2xl font-bold text-indigo-900">{result.confusionMatrix[0]?.[0] || 0}</span>
               </div>
               <div className="bg-red-50 p-4 rounded-lg text-center border border-red-100">
                 <span className="block text-xs text-red-600 font-bold uppercase">False Positive</span>
-                <span className="block text-2xl font-bold text-red-900">{result.confusionMatrix[0][1]}</span>
+                <span className="block text-2xl font-bold text-red-900">{result.confusionMatrix[0]?.[1] || 0}</span>
               </div>
               <div className="bg-red-50 p-4 rounded-lg text-center border border-red-100">
                 <span className="block text-xs text-red-600 font-bold uppercase">False Negative</span>
-                <span className="block text-2xl font-bold text-red-900">{result.confusionMatrix[1][0]}</span>
+                <span className="block text-2xl font-bold text-red-900">{result.confusionMatrix[1]?.[0] || 0}</span>
               </div>
               <div className="bg-indigo-50 p-4 rounded-lg text-center border border-indigo-100">
                 <span className="block text-xs text-indigo-600 font-bold uppercase">True Negative</span>
-                <span className="block text-2xl font-bold text-indigo-900">{result.confusionMatrix[1][1]}</span>
+                <span className="block text-2xl font-bold text-indigo-900">{result.confusionMatrix[1]?.[1] || 0}</span>
               </div>
             </div>
           </div>
+          )}
 
           {/* Precision, Recall, F1 Scores */}
           {(result.precision !== undefined || result.recall !== undefined || result.f1_score !== undefined) && (

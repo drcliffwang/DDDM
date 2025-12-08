@@ -44,6 +44,11 @@ class TrainRequest(BaseModel):
     target: str
     features: List[str]
 
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support, mean_squared_error, r2_score, mean_absolute_error
+
+# ... (imports)
+
 @app.post("/train-rf")
 def train_random_forest(request: TrainRequest):
     try:
@@ -61,112 +66,134 @@ def train_random_forest(request: TrainRequest):
         if missing_features:
             raise HTTPException(status_code=400, detail=f"Missing features: {missing_features}")
 
-        # 3. Data Cleaning (Aggressive)
-        # Drop rows where Target is missing
+        # 3. Data Cleaning
         df = df.dropna(subset=[request.target])
-        
         if df.empty:
             raise HTTPException(status_code=400, detail="All rows have missing target values.")
-        # 2. Validate and filter features
+
         available_columns = set(df.columns)
         requested_features = set(request.features)
         requested_target = request.target
         
-        # Check which features are missing
         missing_features = requested_features - available_columns
         available_features = list(requested_features & available_columns)
         
-        # Check if target exists
-        if requested_target not in available_columns:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Target column '{requested_target}' not found in dataset. Available columns: {list(df.columns)}"
-            )
-        
-        # If no features are available, fail
         if len(available_features) == 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"None of the requested features exist in the dataset. Requested: {list(requested_features)}, Available: {list(available_columns)}"
-            )
+            raise HTTPException(status_code=400, detail="No available features found.")
         
-        # Warn about missing features but continue with available ones
         warning_message = None
         if missing_features:
-            warning_message = f"Warning: {len(missing_features)} feature(s) not found and were skipped: {list(missing_features)}"
-            print(f"⚠️ {warning_message}")
-        
-        # 3. Extract features and target (only using available features)
+            warning_message = f"Warning: {len(missing_features)} feature(s) skipped."
+
         X = df[available_features]
         y = df[requested_target]
 
-        # Handle numeric columns that might have strings (force coerce)
+        # Handle X (Features)
         for col in X.columns:
-            # If column is object type, try to convert to numeric, coerce errors to NaN
             if X[col].dtype == 'object':
                 try:
                     X[col] = pd.to_numeric(X[col], errors='ignore')
                 except:
                     pass
-
-        # Fill NaNs with 0
         X = X.fillna(0)
-        
-        # Replace Infinity with 0
         X = X.replace([np.inf, -np.inf], 0)
-
-        # One-Hot Encoding for remaining categorical text columns
         X = pd.get_dummies(X)
+
+        # 4. Determine Problem Type (Classification vs Regression)
+        # Heuristic: If target is numeric and has many unique values -> Regression
+        # If target is object/string OR numeric with few unique values -> Classification
+        is_regression = False
         
-        # Ensure Target is string
-        y = y.astype(str)
+        if pd.api.types.is_numeric_dtype(y):
+            unique_count = len(y.unique())
+            # If float values, assume regression
+            if pd.api.types.is_float_dtype(y):
+                is_regression = True
+            # If integer but many unique values (e.g. > 20), assume regression
+            elif unique_count > 20:
+                is_regression = True
+            else:
+                is_regression = False # Treat low cardinality int as classification
+        else:
+            is_regression = False # Object/String is classification
 
-        if len(y.unique()) < 2:
-             raise HTTPException(status_code=400, detail="Target variable needs at least 2 different classes (e.g., 'Yes' and 'No').")
-
-        # 4. Train Model
+        
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         
-        if len(X_train) == 0:
-             raise HTTPException(status_code=400, detail="Not enough data to split for training.")
-
-        clf = RandomForestClassifier(n_estimators=100, random_state=42)
-        clf.fit(X_train, y_train)
-
-        # 5. Results
-        y_pred = clf.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        cm = confusion_matrix(y_test, y_pred)
+        metrics = {}
+        cm_list = []
         
-        # Calculate Precision, Recall, F1
-        precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='weighted', zero_division=0)
-        
-        # Save model and columns for prediction
+        if is_regression:
+            # REGRESSION
+            # Ensure y is numeric
+            y_train = pd.to_numeric(y_train, errors='coerce').fillna(0)
+            y_test = pd.to_numeric(y_test, errors='coerce').fillna(0)
+            
+            clf = RandomForestRegressor(n_estimators=100, random_state=42)
+            clf.fit(X_train, y_train)
+            
+            y_pred = clf.predict(X_test)
+            
+            # Metrics
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = np.sqrt(mse)
+            mae = mean_absolute_error(y_test, y_pred)
+            r2 = r2_score(y_test, y_pred)
+            
+            metrics = {
+                "r2_score": float(r2),
+                "rmse": float(rmse),
+                "mae": float(mae)
+            }
+            
+        else:
+            # CLASSIFICATION
+            y = y.astype(str) # Force string for classification
+            # Re-split to ensure y consistency
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            
+            if len(y.unique()) < 2:
+                raise HTTPException(status_code=400, detail="Target variable needs at least 2 different classes.")
+
+            clf = RandomForestClassifier(n_estimators=100, random_state=42)
+            clf.fit(X_train, y_train)
+            
+            y_pred = clf.predict(X_test)
+            
+            acc = accuracy_score(y_test, y_pred)
+            cm = confusion_matrix(y_test, y_pred)
+            precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='weighted', zero_division=0)
+            
+            metrics = {
+                "accuracy": float(acc),
+                "precision": float(precision),
+                "recall": float(recall),
+                "f1_score": float(f1)
+            }
+            cm_list = cm.tolist()
+
+        # Save model artifact
         global model_artifact
         model_artifact = {
             "model": clf,
             "train_columns": X.columns.tolist(),
-            "target": y.name
+            "target": requested_target,
+            "type": "regression" if is_regression else "classification"
         }
 
         importances = clf.feature_importances_
-        feature_names = X.columns
         feature_imp_list = [
             {"name": str(name), "value": float(imp)} 
-            for name, imp in zip(feature_names, importances)
+            for name, imp in zip(X.columns, importances)
         ]
         feature_imp_list.sort(key=lambda x: x['value'], reverse=True)
 
         return {
             "status": "success",
-            "metrics": {
-                "accuracy": float(acc),
-                "precision": float(precision),
-                "recall": float(recall),
-                "f1_score": float(f1)
-            },
+            "model_type": "regression" if is_regression else "classification",
+            "metrics": metrics,
             "feature_importance": feature_imp_list,
-            "confusion_matrix": cm.tolist(),
+            "confusion_matrix": cm_list,
             "warning": warning_message,
             "features_used": available_features,
             "features_skipped": list(missing_features) if missing_features else []
@@ -237,8 +264,11 @@ def predict_model(request: dict):
         print(f"PREDICTION ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Prediction Error: {str(e)}")
 
+class StatisticsRequest(BaseModel):
+    data: List[Dict[str, Any]]
+
 @app.post("/statistics")
-def get_statistics(request: TrainRequest):
+def get_statistics(request: StatisticsRequest):
     """Calculate descriptive statistics for the dataset"""
     try:
         df = pd.DataFrame(request.data)

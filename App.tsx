@@ -20,13 +20,19 @@ const App: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [statistics, setStatistics] = useState<StatisticsData | null>(null);
   const [statsLoading, setStatsLoading] = useState<boolean>(false);
+  const [statsError, setStatsError] = useState<string>('');
 
   const handleDataLoaded = async (newDataset: Dataset) => {
     setDataset(newDataset);
+    setResult(null);
+    setStatus(AnalysisStatus.IDLE);
+    setErrorMessage('');
+    setStatsError(''); // Reset stats error
+    
     // Fetch statistics
     setStatsLoading(true);
     try {
-      // Use the environment-aware URL
+      console.log('Sending statistics request to:', `${API_URL}/statistics`);
       const response = await fetch(`${API_URL}/statistics`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,9 +42,26 @@ const App: React.FC = () => {
       if (response.ok) {
         const statsData = await response.json();
         setStatistics(statsData);
+      } else {
+        const errorText = await response.text();
+        console.error('Statistics fetch failed:', response.status, errorText);
+        let errorMsg = `Server error: ${response.status}`;
+        try {
+            const jsonError = JSON.parse(errorText);
+            if (jsonError && jsonError.detail) {
+                // Handle Pydantic validation errors (array of objects)
+                if (typeof jsonError.detail === 'object') {
+                    errorMsg = JSON.stringify(jsonError.detail);
+                } else {
+                    errorMsg = jsonError.detail;
+                }
+            }
+        } catch (e) { /* ignore json parse error */ }
+        setStatsError(errorMsg);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to fetch statistics:', e);
+      setStatsError(e.message || "Failed to connect to backend for statistics");
     } finally {
       setStatsLoading(false);
     }
@@ -76,10 +99,16 @@ const App: React.FC = () => {
       const data = await response.json();
       
       setResult({
+        model_type: data.model_type,
         accuracy: data.metrics.accuracy,
         precision: data.metrics.precision,
         recall: data.metrics.recall,
         f1_score: data.metrics.f1_score,
+        // Regression metrics (optional)
+        r2_score: data.metrics.r2_score,
+        rmse: data.metrics.rmse,
+        mae: data.metrics.mae,
+        
         featureImportance: data.feature_importance,
         confusionMatrix: data.confusion_matrix,
         warning: data.warning || null,
@@ -142,7 +171,17 @@ const App: React.FC = () => {
         {/* 1.6. EDA Statistics */}
         {dataset && (
           <div className="animate-fade-in-up delay-100">
-            <EDAStats statistics={statistics} isLoading={statsLoading} />
+            {statsError ? (
+                <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-6">
+                    <div className="flex items-center gap-2 text-red-700 font-bold mb-2">
+                        <AlertCircle size={20} />
+                        Statistics Failed to Load
+                    </div>
+                    <p className="text-sm text-red-600 font-mono">{statsError}</p>
+                </div>
+            ) : (
+                <EDAStats statistics={statistics} isLoading={statsLoading} />
+            )}
           </div>
         )}
 
