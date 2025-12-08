@@ -11,6 +11,9 @@ from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_f
 
 app = FastAPI()
 
+# Global storage for trained model
+model_artifact = {}
+
 # Get environment (Railway sets this automatically)
 environment = os.getenv('RAILWAY_ENVIRONMENT', 'development')
 
@@ -137,6 +140,14 @@ def train_random_forest(request: TrainRequest):
         
         # Calculate Precision, Recall, F1
         precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='weighted', zero_division=0)
+        
+        # Save model and columns for prediction
+        global model_artifact
+        model_artifact = {
+            "model": clf,
+            "train_columns": X.columns.tolist(),
+            "target": y.name
+        }
 
         importances = clf.feature_importances_
         feature_names = X.columns
