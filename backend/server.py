@@ -19,8 +19,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",           # Local React dev server
-        "https://*.vercel.app",            # Any Vercel deployment
-        "https://dddm.vercel.app",         # Your specific Vercel URL
+        "https://dddm-smoky.vercel.app",   # Your Vercel deployment
+        "https://*.vercel.app",            # Any Vercel deployment (fallback)
     ],
     allow_credentials=True,
     allow_methods=["*"],
