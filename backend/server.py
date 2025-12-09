@@ -5,9 +5,10 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support, mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
 
 app = FastAPI()
 
@@ -43,11 +44,6 @@ class TrainRequest(BaseModel):
     data: List[Dict[str, Any]]
     target: str
     features: List[str]
-
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support, mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
-
-# ... (imports)
 
 @app.post("/train-rf")
 def train_random_forest(request: TrainRequest):
@@ -206,6 +202,131 @@ def train_random_forest(request: TrainRequest):
         print(f"INTERNAL ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
 
+@app.post("/train-lr")
+def train_logistic_regression(request: TrainRequest):
+    try:
+        # 1. Load Data
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+
+        # 2. Check Columns
+        if request.target not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Target column '{request.target}' not found.")
+        
+        missing_features = [f for f in request.features if f not in df.columns]
+        if missing_features:
+            raise HTTPException(status_code=400, detail=f"Missing features: {missing_features}")
+
+        # 3. Data Cleaning
+        df = df.dropna(subset=[request.target])
+        if df.empty:
+            raise HTTPException(status_code=400, detail="All rows have missing target values.")
+
+        available_columns = set(df.columns)
+        requested_features = set(request.features)
+        requested_target = request.target
+        
+        missing_features = requested_features - available_columns
+        available_features = list(requested_features & available_columns)
+        
+        if len(available_features) == 0:
+            raise HTTPException(status_code=400, detail="No available features found.")
+        
+        warning_message = None
+        if missing_features:
+            warning_message = f"Warning: {len(missing_features)} feature(s) skipped."
+
+        X = df[available_features]
+        y = df[requested_target]
+
+        # Handle X (Features)
+        for col in X.columns:
+            if X[col].dtype == 'object':
+                try:
+                    X[col] = pd.to_numeric(X[col], errors='ignore')
+                except:
+                    pass
+        X = X.fillna(0)
+        X = X.replace([np.inf, -np.inf], 0)
+        X = pd.get_dummies(X)
+
+        # 4. Check Classification Applicability
+        # Logistic Regression is strictly for Classification
+        if pd.api.types.is_numeric_dtype(y):
+             # If float values, it's regression -> Error for Logistic Regression
+            if pd.api.types.is_float_dtype(y):
+                 raise HTTPException(status_code=400, detail="Target variable appears to be continuous (regression). Logistic Regression is for classification only.")
+            
+            unique_count = len(y.unique())
+            if unique_count > 20:
+                 raise HTTPException(status_code=400, detail="Target variable has too many unique values for classification. Did you mean to use Regression?")
+        
+        y = y.astype(str) # Force string for classification
+        
+        if len(y.unique()) < 2:
+            raise HTTPException(status_code=400, detail="Target variable needs at least 2 different classes.")
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        # 5. Train Model
+        clf = LogisticRegression(max_iter=1000, random_state=42)
+        clf.fit(X_train, y_train)
+        
+        y_pred = clf.predict(X_test)
+        
+        # 6. Metrics
+        acc = accuracy_score(y_test, y_pred)
+        cm = confusion_matrix(y_test, y_pred)
+        precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='weighted', zero_division=0)
+        
+        metrics = {
+            "accuracy": float(acc),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1_score": float(f1)
+        }
+        cm_list = cm.tolist()
+
+        # Save model artifact
+        global model_artifact
+        model_artifact = {
+            "model": clf,
+            "train_columns": X.columns.tolist(),
+            "target": requested_target,
+            "type": "classification"
+        }
+
+        # 7. Feature Importance (Coefficients)
+        # For multi-class, coef_ is (n_classes, n_features). We take mean absolute value across classes.
+        # For binary, coef_ is (1, n_features).
+        if clf.coef_.ndim == 2:
+             importances = np.mean(np.abs(clf.coef_), axis=0)
+        else:
+             importances = np.abs(clf.coef_).ravel()
+             
+        feature_imp_list = [
+            {"name": str(name), "value": float(imp)} 
+            for name, imp in zip(X.columns, importances)
+        ]
+        feature_imp_list.sort(key=lambda x: x['value'], reverse=True)
+
+        return {
+            "status": "success",
+            "model_type": "classification",
+            "metrics": metrics,
+            "feature_importance": feature_imp_list,
+            "confusion_matrix": cm_list,
+            "warning": warning_message,
+            "features_used": available_features,
+            "features_skipped": list(missing_features) if missing_features else []
+        }
+
+    except Exception as e:
+        print(f"INTERNAL ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
 @app.post("/predict")
 def predict_model(request: dict):
     """Predict target using trained model"""
@@ -343,8 +464,3 @@ def get_statistics(request: StatisticsRequest):
     except Exception as e:
         print(f"STATISTICS ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
-
-
-@app.get("/")
-def read_root():
-    return {"message": "Backend is running"}

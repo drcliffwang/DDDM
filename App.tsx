@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, AlertCircle } from 'lucide-react';
+import { Brain, AlertCircle, BarChart2, Clock } from 'lucide-react';
 import { Dataset, AnalysisStatus, ModelResult, StatisticsData } from './types';
 import DataIngestion from './components/DataIngestion';
 import DataPreview from './components/DataPreview';
@@ -8,6 +8,8 @@ import DataVisualization from './components/DataVisualization';
 import FeatureSelection from './components/FeatureSelection';
 import ResultsDashboard from './components/ResultsDashboard';
 import PredictionPanel from './components/PredictionPanel';
+import AnalysisTabs, { AnalysisTab } from './components/AnalysisTabs';
+import MachineLearningMenu, { MLModel } from './components/MachineLearningMenu';
 
 // Environment-aware API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -21,6 +23,10 @@ const App: React.FC = () => {
   const [statistics, setStatistics] = useState<StatisticsData | null>(null);
   const [statsLoading, setStatsLoading] = useState<boolean>(false);
   const [statsError, setStatsError] = useState<string>('');
+
+  // Navigation State
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('data-exploration');
+  const [activeMLModel, setActiveMLModel] = useState<MLModel>('random-forest');
 
   const handleDataLoaded = async (newDataset: Dataset) => {
     setDataset(newDataset);
@@ -71,8 +77,14 @@ const App: React.FC = () => {
   const runAnalysis = async (target: string, features: string[]) => {
     setStatus(AnalysisStatus.LOADING);
     try {
+      
+      let endpoint = '/train-rf';
+      if (activeMLModel === 'logistic-regression') {
+        endpoint = '/train-lr';
+      }
+
       // Use the environment-aware URL
-      const response = await fetch(`${API_URL}/train-rf`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -145,10 +157,9 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-        
-        {/* Header Section */}
-        <div className="text-center max-w-3xl mx-auto mb-12">
+      {/* Hero / Header Section - Slightly reduced bottom margin to fit tabs */}
+      <div className="bg-white border-b border-slate-100 pb-8 pt-10">
+         <div className="text-center max-w-3xl mx-auto px-4">
           <h1 className="text-4xl font-extrabold text-slate-900 sm:text-5xl mb-4">
             Data Analysis & ML Studio
           </h1>
@@ -156,91 +167,156 @@ const App: React.FC = () => {
             Professional tool for data ingestion and Random Forest modeling.
           </p>
         </div>
+      </div>
 
-        {/* 1. Data Ingestion (New UI) */}
-        <div className="animate-fade-in-up">
-          <DataIngestion onDataLoaded={handleDataLoaded} />
+      <main className="min-h-[calc(100vh-200px)]">
+        
+        {/* 1. Data Ingestion (Always Visible) */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-fade-in-up">
+            <DataIngestion onDataLoaded={handleDataLoaded} />
+          </div>
         </div>
 
-        {/* 1.5. Data Preview */}
+        {/* 1.5. Data Preview (Always Visible if dataset exists) */}
         {dataset && (
-          <div className="animate-fade-in-up delay-75">
-            <DataPreview dataset={dataset} />
-          </div>
-        )}
-
-        {/* 1.6. EDA Statistics */}
-        {dataset && (
-          <div className="animate-fade-in-up delay-100">
-            {statsError ? (
-                <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-6">
-                    <div className="flex items-center gap-2 text-red-700 font-bold mb-2">
-                        <AlertCircle size={20} />
-                        Statistics Failed to Load
-                    </div>
-                    <p className="text-sm text-red-600 font-mono">{statsError}</p>
-                </div>
-            ) : (
-                <EDAStats statistics={statistics} isLoading={statsLoading} />
-            )}
-          </div>
-        )}
-
-        {/* 1.7. Data Visualization */}
-        {dataset && (
-          <div className="animate-fade-in-up delay-150">
-            <DataVisualization statistics={statistics} isLoading={statsLoading} dataset={dataset} />
-          </div>
-        )}
-
-        {/* 2. Configuration Section */}
-        {dataset && (
-          <div className="animate-fade-in-up delay-200">
-             <FeatureSelection 
-               headers={dataset.headers} 
-               onRunAnalysis={runAnalysis}
-               isProcessing={status === AnalysisStatus.LOADING}
-             />
-          </div>
-        )}
-
-        {/* Error Message */}
-        {status === AnalysisStatus.ERROR && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md animate-shake shadow-sm">
-            <div className="flex items-start">
-              <AlertCircle className="text-red-500 mt-0.5" size={20} />
-              <div className="ml-3">
-                <h3 className="text-sm font-bold text-red-800">Analysis Failed</h3>
-                <p className="text-sm text-red-700 mt-1 font-mono bg-red-100/50 p-2 rounded">
-                  {errorMessage}
-                </p>
-                <p className="text-xs text-red-500 mt-2">
-                  Check your terminal running 'server.py' for detailed logs.
-                </p>
-              </div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
+            <div className="animate-fade-in-up delay-75">
+              <DataPreview dataset={dataset} />
             </div>
           </div>
         )}
 
-        {/* 3. Results Section */}
-        {result && status === AnalysisStatus.SUCCESS && (
-          <div className="animate-fade-in-up delay-300">
-            <ResultsDashboard result={result} />
-            <PredictionPanel 
-              features={result.features_used || []} 
-              featuresUsed={result.features_used || []} 
-              statistics={statistics}
+        {/* TABS NAVIGATION */}
+        {dataset && (
+          <>
+            <AnalysisTabs 
+              activeTab={activeTab} 
+              onTabChange={setActiveTab} 
             />
+            
+            {/* Sub-menu for Machine Learning */}
+            {activeTab === 'machine-learning' && (
+              <MachineLearningMenu
+                activeModel={activeMLModel}
+                onModelChange={setActiveMLModel}
+              />
+            )}
+          </>
+        )}
+
+        {/* MAIN CONTENT AREA */}
+        {dataset && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+            
+            {/* CONTENT: DATA EXPLORATION */}
+            {activeTab === 'data-exploration' && (
+              <>
+                <div className="animate-fade-in-up delay-100">
+                  {statsError ? (
+                      <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-6">
+                          <div className="flex items-center gap-2 text-red-700 font-bold mb-2">
+                              <AlertCircle size={20} />
+                              Statistics Failed to Load
+                          </div>
+                          <p className="text-sm text-red-600 font-mono">{statsError}</p>
+                      </div>
+                  ) : (
+                      <EDAStats statistics={statistics} isLoading={statsLoading} />
+                  )}
+                </div>
+
+                <div className="animate-fade-in-up delay-150">
+                  <DataVisualization statistics={statistics} isLoading={statsLoading} dataset={dataset} />
+                </div>
+              </>
+            )}
+
+            {/* CONTENT: BASIC ANALYSIS (Placeholder) */}
+            {activeTab === 'basic-analysis' && (
+              <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
+                <BarChart2 size={48} className="mx-auto text-slate-300 mb-4" />
+                <h3 className="text-lg font-medium text-slate-900">基本分析 Coming Soon</h3>
+                <p className="text-slate-500">Basic statistical analysis modules will be available here.</p>
+              </div>
+            )}
+
+             {/* CONTENT: TIME SERIES (Placeholder) */}
+             {activeTab === 'time-series' && (
+              <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
+                <Clock size={48} className="mx-auto text-slate-300 mb-4" />
+                <h3 className="text-lg font-medium text-slate-900">時間序列 Coming Soon</h3>
+                <p className="text-slate-500">Time series forecasting and analysis tools will be available here.</p>
+              </div>
+            )}
+
+            {/* CONTENT: MACHINE LEARNING */}
+            {activeTab === 'machine-learning' && (
+              <>
+                {/* Random Forest Content OR Logistic Regression */}
+                {activeMLModel === 'random-forest' || activeMLModel === 'logistic-regression' ? (
+                  <div className="animate-fade-in-up">
+                    <FeatureSelection 
+                      headers={dataset.headers} 
+                      onRunAnalysis={runAnalysis}
+                      isProcessing={status === AnalysisStatus.LOADING}
+                    />
+
+                    {/* Error Message */}
+                    {status === AnalysisStatus.ERROR && (
+                      <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md animate-shake shadow-sm mt-6">
+                        <div className="flex items-start">
+                          <AlertCircle className="text-red-500 mt-0.5" size={20} />
+                          <div className="ml-3">
+                            <h3 className="text-sm font-bold text-red-800">Analysis Failed</h3>
+                            <p className="text-sm text-red-700 mt-1 font-mono bg-red-100/50 p-2 rounded">
+                              {errorMessage}
+                            </p>
+                            <p className="text-xs text-red-500 mt-2">
+                              Check your terminal running 'server.py' for detailed logs.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Results Section */}
+                    {result && status === AnalysisStatus.SUCCESS && (
+                      <div className="animate-fade-in-up delay-300 mt-8 space-y-8">
+                        <ResultsDashboard result={result} />
+                        <PredictionPanel 
+                          features={result.features_used || []} 
+                          featuresUsed={result.features_used || []} 
+                          statistics={statistics}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Placeholder for other ML models */
+                  <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
+                    <Brain size={48} className="mx-auto text-slate-300 mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900">Model Coming Soon</h3>
+                    <p className="text-slate-500">The selected model {activeMLModel} is not yet implemented.</p>
+                  </div>
+                )}
+              </>
+            )}
+
           </div>
         )}
 
-        {/* Loading State Overlay */}
-        {status === AnalysisStatus.LOADING && !result && (
+        {/* Loading State Overlay (Global) */}
+        {status === AnalysisStatus.LOADING && !result && activeTab === 'machine-learning' && (
           <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
             <div className="text-center">
               <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
               <h3 className="text-xl font-bold text-indigo-900">Running Python Kernel...</h3>
-              <p className="text-slate-500">Training Random Forest (n_estimators=100)</p>
+              <p className="text-slate-500">
+                {activeMLModel === 'logistic-regression' 
+                   ? 'Training Logistic Regression Model...' 
+                   : 'Training Random Forest (n_estimators=100)'}
+              </p>
             </div>
           </div>
         )}
