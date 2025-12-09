@@ -97,6 +97,43 @@ const DataIngestion: React.FC<Props> = ({ onDataLoaded }) => {
       }
     }
   };
+  const handleLoadExample = async () => {
+    setIsLoading(true);
+    try {
+        const response = await fetch('/Example.xlsx');
+        if (!response.ok) throw new Error("Example file not found");
+        
+        const blob = await response.blob();
+        const reader = new FileReader();
+        
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                
+                // Set file metadata as if user uploaded it
+                setFile(new File([blob], "Example.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+                setWorkbook(wb);
+                setSheetNames(wb.SheetNames);
+                if (wb.SheetNames.length > 0) {
+                    setSelectedSheet(wb.SheetNames[0]);
+                }
+                setActiveTab('file');
+            } catch (err) {
+                console.error("Error parsing example file:", err);
+                alert("Failed to parse example file.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        reader.readAsBinaryString(blob);
+        
+    } catch (e) {
+        console.error(e);
+        alert("Failed to load example data.");
+        setIsLoading(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-indigo-500">
@@ -108,9 +145,13 @@ const DataIngestion: React.FC<Props> = ({ onDataLoaded }) => {
               Upload Data
             </h2>
           </div>
-          <button className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-indigo-100 transition-colors">
+          <button 
+            onClick={handleLoadExample}
+            disabled={isLoading}
+            className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+          >
             <FileSpreadsheet size={16} className="text-yellow-500" />
-            Load Example Data
+            {isLoading ? "Loading..." : "Load Example Data"}
           </button>
         </div>
 

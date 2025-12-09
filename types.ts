@@ -18,6 +18,7 @@ export interface ModelResult {
   r2_score?: number;
   rmse?: number;
   mae?: number;
+  mape?: number;
   
   featureImportance: Array<{ name: string; value: number }>;
   confusionMatrix: number[][]; // Empty for regression

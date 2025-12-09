@@ -45,7 +45,7 @@ class TrainRequest(BaseModel):
     features: List[str]
 
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support, mean_squared_error, r2_score, mean_absolute_error
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support, mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
 
 # ... (imports)
 
@@ -139,11 +139,13 @@ def train_random_forest(request: TrainRequest):
             rmse = np.sqrt(mse)
             mae = mean_absolute_error(y_test, y_pred)
             r2 = r2_score(y_test, y_pred)
+            mape = mean_absolute_percentage_error(y_test, y_pred)
             
             metrics = {
                 "r2_score": float(r2),
                 "rmse": float(rmse),
-                "mae": float(mae)
+                "mae": float(mae),
+                "mape": float(mape)
             }
             
         else:
@@ -315,9 +317,9 @@ def get_statistics(request: StatisticsRequest):
                 "values": corr.fillna(0).values.tolist()
             }
         
-        # Value counts for categorical columns (top 10)
+        # Value counts for ALL columns (top 10 common values for suggestions)
         categorical_stats = {}
-        for col in categorical_cols:
+        for col in df.columns:
             value_counts = df[col].value_counts().head(10)
             categorical_stats[col] = [
                 {"value": str(val), "count": int(count)}

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Send, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { StatisticsData } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface Props {
   features: string[];
   featuresUsed: string[];
+  statistics: StatisticsData | null;
   onClose?: () => void;
 }
 
@@ -14,7 +16,7 @@ interface PredictionResult {
   probabilities?: Record<string, number>;
 }
 
-const PredictionPanel: React.FC<Props> = ({ featuresUsed }) => {
+const PredictionPanel: React.FC<Props> = ({ featuresUsed, statistics }) => {
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -84,20 +86,34 @@ const PredictionPanel: React.FC<Props> = ({ featuresUsed }) => {
         </p>
 
         <div className="ml-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {featuresUsed.map(feature => (
-            <div key={feature} className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 block truncate" title={feature}>
-                {feature}
-              </label>
-              <input
-                type="text"
-                placeholder={`Value for ${feature}`}
-                value={inputs[feature] || ''}
-                onChange={(e) => handleInputChange(feature, e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all"
-              />
-            </div>
-          ))}
+          {featuresUsed.map(feature => {
+            const hasSuggestions = statistics?.categorical_stats?.[feature];
+            return (
+              <div key={feature} className="space-y-2">
+                <label className="text-sm font-medium text-slate-700 block truncate" title={feature}>
+                  {feature}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    list={hasSuggestions ? `list-${feature}` : undefined}
+                    placeholder={`Value for ${feature}`}
+                    value={inputs[feature] || ''}
+                    onChange={(e) => handleInputChange(feature, e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all"
+                    autoComplete="off"
+                  />
+                  {hasSuggestions && (
+                    <datalist id={`list-${feature}`}>
+                      {hasSuggestions.map((item) => (
+                        <option key={item.value} value={item.value} />
+                      ))}
+                    </datalist>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="ml-10">

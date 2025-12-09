@@ -108,6 +108,7 @@ const App: React.FC = () => {
         r2_score: data.metrics.r2_score,
         rmse: data.metrics.rmse,
         mae: data.metrics.mae,
+        mape: data.metrics.mape,
         
         featureImportance: data.feature_importance,
         confusionMatrix: data.confusion_matrix,
@@ -228,6 +229,7 @@ const App: React.FC = () => {
             <PredictionPanel 
               features={result.features_used || []} 
               featuresUsed={result.features_used || []} 
+              statistics={statistics}
             />
           </div>
         )}

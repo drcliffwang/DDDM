@@ -71,6 +71,10 @@ const ResultsDashboard: React.FC<Props> = ({ result }) => {
                             <div className="text-slate-400">MAE</div>
                             <div className="font-bold">{result.mae?.toFixed(2)}</div>
                         </div>
+                        <div className="bg-white p-2 rounded border border-slate-200 col-span-2">
+                            <div className="text-slate-400">MAPE</div>
+                            <div className="font-bold">{(result.mape ? (result.mape * 100).toFixed(2) : "0.00")}%</div>
+                        </div>
                     </div>
                 </>
             ) : (
