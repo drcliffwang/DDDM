@@ -1797,3 +1797,180 @@ def correlation_matrix(request: CorrelationMatrixRequest):
     except Exception as e:
         print(f"CORRELATION MATRIX ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+# Anomaly Detection
+class AnomalyDetectionRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    column: str
+    method: str = "zscore"  # 'zscore' or 'iqr'
+    threshold: float = 3.0  # Z-score threshold or IQR multiplier
+
+@app.post("/anomaly-detection")
+def anomaly_detection(request: AnomalyDetectionRequest):
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        col = request.column
+        if col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col}' not found.")
+        
+        # Convert to numeric
+        values = pd.to_numeric(df[col], errors='coerce')
+        valid_mask = values.notna()
+        valid_values = values[valid_mask]
+        
+        if len(valid_values) < 3:
+            raise HTTPException(status_code=400, detail="Not enough numeric data for anomaly detection.")
+        
+        mean_val = float(valid_values.mean())
+        std_val = float(valid_values.std())
+        q1 = float(valid_values.quantile(0.25))
+        q3 = float(valid_values.quantile(0.75))
+        iqr = q3 - q1
+        
+        anomalies = []
+        
+        if request.method == "zscore":
+            # Z-score method
+            if std_val > 0:
+                z_scores = (valid_values - mean_val) / std_val
+                anomaly_mask = abs(z_scores) > request.threshold
+            else:
+                anomaly_mask = pd.Series([False] * len(valid_values), index=valid_values.index)
+            
+            lower_bound = mean_val - request.threshold * std_val
+            upper_bound = mean_val + request.threshold * std_val
+            
+        else:  # IQR method
+            lower_bound = q1 - request.threshold * iqr
+            upper_bound = q3 + request.threshold * iqr
+            anomaly_mask = (valid_values < lower_bound) | (valid_values > upper_bound)
+        
+        # Collect anomaly details
+        anomaly_indices = valid_values[anomaly_mask].index.tolist()
+        for idx in anomaly_indices:
+            row_data = df.iloc[idx].to_dict()
+            anomalies.append({
+                "row_index": int(idx),
+                "value": float(values.iloc[idx]),
+                "row_data": {k: str(v) for k, v in row_data.items()}
+            })
+        
+        return {
+            "status": "success",
+            "column": col,
+            "method": request.method,
+            "threshold": float(request.threshold),
+            "total_rows": int(len(valid_values)),
+            "anomaly_count": int(len(anomalies)),
+            "anomaly_percentage": round(float(len(anomalies) / len(valid_values) * 100), 2) if len(valid_values) > 0 else 0,
+            "statistics": {
+                "mean": round(mean_val, 4),
+                "std": round(std_val, 4),
+                "q1": round(q1, 4),
+                "q3": round(q3, 4),
+                "iqr": round(iqr, 4),
+                "lower_bound": round(float(lower_bound), 4),
+                "upper_bound": round(float(upper_bound), 4)
+            },
+            "anomalies": anomalies[:100]  # Limit to first 100 anomalies
+        }
+        
+    except Exception as e:
+        print(f"ANOMALY DETECTION ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+# Word Cloud - Word Frequency Extraction
+class WordCloudRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    column: str
+    max_words: int = 100
+    min_frequency: int = 1
+
+@app.post("/word-cloud")
+def word_cloud(request: WordCloudRequest):
+    import re
+    from collections import Counter
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        col = request.column
+        if col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col}' not found.")
+        
+        # Collect all text from the column
+        all_text = df[col].dropna().astype(str).str.cat(sep=' ')
+        
+        if not all_text.strip():
+            raise HTTPException(status_code=400, detail="No text data found in the column.")
+        
+        # Extract words (handles both Chinese and English)
+        # For Chinese: split by common delimiters and get individual characters/words
+        # For English: extract words
+        
+        # Remove common punctuation and split
+        cleaned_text = re.sub(r'[^\w\s\u4e00-\u9fff]', ' ', all_text)
+        
+        # Split into words/characters
+        words = cleaned_text.split()
+        
+        # Also handle Chinese characters individually if they appear
+        expanded_words = []
+        for word in words:
+            if re.match(r'^[\u4e00-\u9fff]+$', word):
+                # Chinese text - can keep as word or split into characters
+                # Keep as single word/phrase if short, otherwise keep whole
+                if len(word) <= 4:
+                    expanded_words.append(word)
+                else:
+                    # Split long Chinese text into 2-char chunks
+                    for i in range(0, len(word), 2):
+                        chunk = word[i:i+2]
+                        if len(chunk) >= 1:
+                            expanded_words.append(chunk)
+            else:
+                # English or other - convert to lowercase
+                expanded_words.append(word.lower())
+        
+        # Filter short words and count frequencies
+        filtered_words = [w for w in expanded_words if len(w) >= 1]
+        word_counts = Counter(filtered_words)
+        
+        # Filter by minimum frequency and get top words
+        frequent_words = [(word, count) for word, count in word_counts.most_common() 
+                         if count >= request.min_frequency][:request.max_words]
+        
+        if not frequent_words:
+            raise HTTPException(status_code=400, detail="No words found with minimum frequency.")
+        
+        # Calculate max count for normalization
+        max_count = frequent_words[0][1] if frequent_words else 1
+        
+        # Format for frontend
+        words_data = [
+            {
+                "text": word,
+                "count": int(count),
+                "size": max(12, min(60, int(20 + 40 * (count / max_count))))  # Size between 12-60px
+            }
+            for word, count in frequent_words
+        ]
+        
+        return {
+            "status": "success",
+            "column": col,
+            "total_words": int(len(filtered_words)),
+            "unique_words": int(len(word_counts)),
+            "words": words_data
+        }
+        
+    except Exception as e:
+        print(f"WORD CLOUD ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")

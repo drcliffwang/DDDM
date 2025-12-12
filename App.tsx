@@ -17,6 +17,8 @@ import HypothesisTesting from './components/HypothesisTesting';
 import ChiSquareTest from './components/ChiSquareTest';
 import RegressionAnalysis from './components/RegressionAnalysis';
 import CorrelationMatrix from './components/CorrelationMatrix';
+import AnomalyDetection from './components/AnomalyDetection';
+import WordCloud from './components/WordCloud';
 
 // Environment-aware API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -279,6 +281,10 @@ const App: React.FC = () => {
                   <RegressionAnalysis dataset={dataset} apiUrl={API_URL} />
                 ) : activeBasicAnalysis === 'correlation-matrix' && dataset ? (
                   <CorrelationMatrix dataset={dataset} apiUrl={API_URL} />
+                ) : activeBasicAnalysis === 'anomaly-detection' && dataset ? (
+                  <AnomalyDetection dataset={dataset} apiUrl={API_URL} />
+                ) : activeBasicAnalysis === 'word-cloud' && dataset ? (
+                  <WordCloud dataset={dataset} apiUrl={API_URL} />
                 ) : (
                   <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300 mt-4">
                     <BarChart2 size={48} className="mx-auto text-slate-300 mb-4" />
