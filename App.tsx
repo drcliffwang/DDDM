@@ -260,6 +260,7 @@ const App: React.FC = () => {
                       headers={dataset.headers} 
                       onRunAnalysis={runAnalysis}
                       isProcessing={status === AnalysisStatus.LOADING}
+                      buttonText={activeMLModel === 'logistic-regression' ? 'Train Logistic Regression' : 'Train Random Forest'}
                     />
 
                     {/* Error Message */}

@@ -5,9 +5,10 @@ interface Props {
   headers: string[];
   onRunAnalysis: (target: string, features: string[]) => void;
   isProcessing: boolean;
+  buttonText?: string;
 }
 
-const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessing }) => {
+const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessing, buttonText = 'Train Random Forest' }) => {
   const [target, setTarget] = useState<string>('');
   const [features, setFeatures] = useState<string[]>([]);
 
@@ -116,7 +117,7 @@ const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessin
             }`}
           >
             <Play size={18} fill="currentColor" />
-            {isProcessing ? 'Training Model...' : 'Train Random Forest'}
+            {isProcessing ? 'Training Model...' : buttonText}
           </button>
         </div>
       </div>
