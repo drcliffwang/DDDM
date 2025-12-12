@@ -81,6 +81,20 @@ const App: React.FC = () => {
       let endpoint = '/train-rf';
       if (activeMLModel === 'logistic-regression') {
         endpoint = '/train-lr';
+      } else if (activeMLModel === 'decision-tree') {
+        endpoint = '/train-dt';
+      } else if (activeMLModel === 'neural-network') {
+        endpoint = '/train-nn';
+      } else if (activeMLModel === 'apriori') {
+        endpoint = '/train-apriori';
+      } else if (activeMLModel === 'pca') {
+        endpoint = '/train-pca';
+      } else if (activeMLModel === 'factor-analysis') {
+        endpoint = '/train-fa';
+      } else if (activeMLModel === 'kmeans') {
+        endpoint = '/train-kmeans';
+      } else if (activeMLModel === 'hierarchical') {
+        endpoint = '/train-hierarchical';
       }
 
       // Use the environment-aware URL
@@ -127,7 +141,12 @@ const App: React.FC = () => {
         warning: data.warning || null,
         features_used: data.features_used || [],
         features_skipped: data.features_skipped || [],
-        predictions: [] 
+        predictions: [],
+        associationRules: data.association_rules,
+        pcaResults: data.pca_results,
+        faResults: data.fa_results,
+        kmeansResults: data.kmeans_results,
+        hierarchicalResults: data.hierarchical_results
       });
       setStatus(AnalysisStatus.SUCCESS);
     } catch (e: any) {
@@ -253,14 +272,33 @@ const App: React.FC = () => {
             {/* CONTENT: MACHINE LEARNING */}
             {activeTab === 'machine-learning' && (
               <>
-                {/* Random Forest Content OR Logistic Regression */}
-                {activeMLModel === 'random-forest' || activeMLModel === 'logistic-regression' ? (
+                {/* Random Forest OR Logistic Regression OR Decision Tree OR Neural Network OR Apriori OR PCA OR Factor Analysis OR K-Means OR Hierarchical */}
+                {activeMLModel === 'random-forest' || activeMLModel === 'logistic-regression' || activeMLModel === 'decision-tree' || activeMLModel === 'neural-network' || activeMLModel === 'apriori' || activeMLModel === 'pca' || activeMLModel === 'factor-analysis' || activeMLModel === 'kmeans' || activeMLModel === 'hierarchical' ? (
                   <div className="animate-fade-in-up">
-                    <FeatureSelection 
-                      headers={dataset.headers} 
-                      onRunAnalysis={runAnalysis}
-                      isProcessing={status === AnalysisStatus.LOADING}
-                      buttonText={activeMLModel === 'logistic-regression' ? 'Train Logistic Regression' : 'Train Random Forest'}
+                      <FeatureSelection 
+                        headers={dataset.headers} 
+                        onRunAnalysis={runAnalysis}
+                        isProcessing={status === AnalysisStatus.LOADING}
+                        activeModel={activeMLModel}
+                        buttonText={
+                        activeMLModel === 'logistic-regression' 
+                          ? 'Train Logistic Regression' 
+                          : activeMLModel === 'decision-tree'
+                            ? 'Train Decision Tree'
+                            : activeMLModel === 'neural-network'
+                              ? 'Train Neural Network'
+                              : activeMLModel === 'apriori'
+                                ? 'Train Apriori'
+                                : activeMLModel === 'pca'
+                                  ? 'Run PCA Analysis'
+                                  : activeMLModel === 'factor-analysis'
+                                    ? 'Run Factor Analysis' 
+                                    : activeMLModel === 'kmeans'
+                                      ? 'Run K-Means Clustering'
+                                      : activeMLModel === 'hierarchical'
+                                        ? 'Run Hierarchical Clustering'
+                                        : 'Train Random Forest'
+                      }
                     />
 
                     {/* Error Message */}
@@ -285,11 +323,14 @@ const App: React.FC = () => {
                     {result && status === AnalysisStatus.SUCCESS && (
                       <div className="animate-fade-in-up delay-300 mt-8 space-y-8">
                         <ResultsDashboard result={result} />
+                        {/* 4. Model Prediction (Hide for Apriori, PCA, FA, K-Means, Hierarchical) */}
+                        {activeMLModel !== 'apriori' && activeMLModel !== 'pca' && activeMLModel !== 'factor-analysis' && activeMLModel !== 'kmeans' && activeMLModel !== 'hierarchical' && (
                         <PredictionPanel 
                           features={result.features_used || []} 
                           featuresUsed={result.features_used || []} 
                           statistics={statistics}
                         />
+                        )}
                       </div>
                     )}
                   </div>
@@ -316,7 +357,21 @@ const App: React.FC = () => {
               <p className="text-slate-500">
                 {activeMLModel === 'logistic-regression' 
                    ? 'Training Logistic Regression Model...' 
-                   : 'Training Random Forest (n_estimators=100)'}
+                   : activeMLModel === 'decision-tree'
+                     ? 'Training Decision Tree Model...'
+                     : activeMLModel === 'neural-network'
+                       ? 'Training Neural Network...'
+                       : activeMLModel === 'apriori'
+                         ? 'Mining Association Rules...'
+                         : activeMLModel === 'pca'
+                           ? 'Running PCA Analysis...'
+                           : activeMLModel === 'factor-analysis'
+                             ? 'Running Factor Analysis...'
+                             : activeMLModel === 'kmeans'
+                               ? 'Running K-Means Clustering...'
+                               : activeMLModel === 'hierarchical'
+                                 ? 'Running Hierarchical Clustering...'
+                                 : 'Training Random Forest (n_estimators=100)'}
               </p>
             </div>
           </div>

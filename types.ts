@@ -9,7 +9,7 @@ export interface Dataset {
 }
 
 export interface ModelResult {
-  model_type?: 'classification' | 'regression';
+  model_type: 'classification' | 'regression' | 'association_rules' | 'pca' | 'factor-analysis' | 'kmeans' | 'hierarchical';
   accuracy?: number;
   precision?: number;
   recall?: number;
@@ -26,6 +26,40 @@ export interface ModelResult {
   features_used?: string[];
   features_skipped?: string[];
   predictions: number[];
+  associationRules?: AssociationRule[];
+  pcaResults?: {
+    explained_variance: number[];
+    components: any[];
+    projected_data: any[];
+  };
+  faResults?: {
+    components: any[];
+    communalities: {[key: string]: number};
+    noise_variance: number[];
+    log_likelihood: number;
+  };
+  kmeansResults?: {
+    cluster_distribution: Array<{cluster: number; count: number}>;
+    cluster_centers: any[];
+    inertia: number;
+    n_clusters: number;
+    silhouette_score?: number;
+    elbow_data?: Array<{k: number; inertia: number}>;
+  };
+  hierarchicalResults?: {
+    cluster_distribution: Array<{cluster: number; count: number}>;
+    cluster_centers: any[];
+    n_clusters: number;
+    linkage: string;
+  };
+}
+
+export type AssociationRule = {
+    antecedents: string;
+    consequents: string;
+    support: number;
+    confidence: number;
+    lift: number;
 }
 
 export enum AnalysisStatus {

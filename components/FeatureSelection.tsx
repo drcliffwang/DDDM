@@ -6,9 +6,10 @@ interface Props {
   onRunAnalysis: (target: string, features: string[]) => void;
   isProcessing: boolean;
   buttonText?: string;
+  activeModel?: string;
 }
 
-const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessing, buttonText = 'Train Random Forest' }) => {
+const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessing, buttonText = 'Train Random Forest', activeModel }) => {
   const [target, setTarget] = useState<string>('');
   const [features, setFeatures] = useState<string[]>([]);
 
@@ -26,7 +27,8 @@ const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessin
     }
   };
 
-  const isValid = target && features.length > 0 && !features.includes(target);
+  const isValid = (target || activeModel === 'pca' || activeModel === 'factor-analysis' || activeModel === 'kmeans' || activeModel === 'hierarchical') && features.length > 0 && !features.includes(target);
+  const isPca = activeModel === 'pca' || activeModel === 'factor-analysis' || activeModel === 'kmeans' || activeModel === 'hierarchical';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-orange-500">
@@ -44,10 +46,10 @@ const FeatureSelection: React.FC<Props> = ({ headers, onRunAnalysis, isProcessin
         <div className="mt-8 ml-10 grid grid-cols-1 lg:grid-cols-2 gap-12">
           
           {/* Target Selection */}
-          <div className="space-y-4">
+          <div className={`space-y-4 transition-opacity duration-300 ${isPca ? 'opacity-50 hover:opacity-100' : ''}`}>
             <h3 className="font-semibold text-slate-900 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-              Target Variable (Y)
+              {isPca ? "Target Variable (Optional for Coloring)" : "Target Variable (Y)"}
             </h3>
             <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
               {headers.map(header => (
