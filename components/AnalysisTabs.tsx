@@ -22,6 +22,14 @@ const AnalysisTabs: React.FC<Props> = ({ activeTab, onTabChange }) => {
         <div className="flex space-x-4 overflow-x-auto no-scrollbar justify-center py-2">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
+            // Unique colors for each tab
+            const colorMap: Record<string, { active: string; hover: string }> = {
+              'data-exploration': { active: 'border-indigo-600 text-indigo-700 bg-indigo-50', hover: 'hover:text-indigo-700 hover:bg-indigo-50/50 hover:border-indigo-300' },
+              'basic-analysis': { active: 'border-emerald-600 text-emerald-700 bg-emerald-50', hover: 'hover:text-emerald-700 hover:bg-emerald-50/50 hover:border-emerald-300' },
+              'time-series': { active: 'border-amber-500 text-amber-700 bg-amber-50', hover: 'hover:text-amber-700 hover:bg-amber-50/50 hover:border-amber-300' },
+              'machine-learning': { active: 'border-indigo-600 text-indigo-700 bg-indigo-50', hover: 'hover:text-indigo-700 hover:bg-indigo-50/50 hover:border-indigo-300' },
+            };
+            const colors = colorMap[tab.id] || colorMap['data-exploration'];
             return (
               <button
                 key={tab.id}
@@ -29,8 +37,8 @@ const AnalysisTabs: React.FC<Props> = ({ activeTab, onTabChange }) => {
                 className={`
                   group flex items-center gap-3 py-5 px-8 border-b-4 text-xl font-bold transition-all duration-200 whitespace-nowrap rounded-t-xl
                   ${isActive 
-                    ? 'border-indigo-600 text-indigo-700 bg-indigo-50' 
-                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 hover:border-slate-300'
+                    ? colors.active 
+                    : `border-transparent text-slate-500 ${colors.hover}`
                   }
                 `}
               >

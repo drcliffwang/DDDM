@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -1275,4 +1275,525 @@ def get_statistics(request: StatisticsRequest):
     
     except Exception as e:
         print(f"STATISTICS ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+class ParetoRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    category_column: str
+    value_column: str
+
+@app.post("/pareto-analysis")
+def pareto_analysis(request: ParetoRequest):
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        cat_col = request.category_column
+        val_col = request.value_column
+        
+        if cat_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Category column '{cat_col}' not found.")
+        if val_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Value column '{val_col}' not found.")
+        
+        # Convert value column to numeric
+        df[val_col] = pd.to_numeric(df[val_col], errors='coerce')
+        df = df.dropna(subset=[val_col])
+        
+        # Group by category and sum values
+        grouped = df.groupby(cat_col)[val_col].sum().reset_index()
+        grouped.columns = ['category', 'value']
+        
+        # Sort descending
+        grouped = grouped.sort_values('value', ascending=False).reset_index(drop=True)
+        
+        # Calculate cumulative percentage
+        total = grouped['value'].sum()
+        grouped['percentage'] = (grouped['value'] / total * 100).round(2)
+        grouped['cumulative_percentage'] = grouped['percentage'].cumsum().round(2)
+        
+        # Find 80% threshold index
+        threshold_80_idx = (grouped['cumulative_percentage'] >= 80).idxmax() if (grouped['cumulative_percentage'] >= 80).any() else len(grouped) - 1
+        
+        pareto_data = grouped.to_dict('records')
+        
+        return {
+            "status": "success",
+            "pareto_data": pareto_data,
+            "total": float(total),
+            "threshold_80_index": int(threshold_80_idx),
+            "categories_for_80": int(threshold_80_idx + 1),
+            "total_categories": len(grouped)
+        }
+        
+    except Exception as e:
+        print(f"PARETO ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+class HypothesisTestRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    test_type: str  # 'one-sample', 'two-sample', 'paired'
+    column1: str
+    column2: Optional[str] = None  # Optional, for two-sample or paired
+    hypothesized_mean: float = 0  # For one-sample t-test
+
+@app.post("/hypothesis-test")
+def hypothesis_test(request: HypothesisTestRequest):
+    from scipy import stats
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        col1 = request.column1
+        if col1 not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col1}' not found.")
+        
+        # Convert to numeric
+        sample1 = pd.to_numeric(df[col1], errors='coerce').dropna()
+        
+        if len(sample1) < 2:
+            raise HTTPException(status_code=400, detail="Not enough data points for testing.")
+        
+        result = {}
+        
+        if request.test_type == 'one-sample':
+            # One-sample t-test against hypothesized mean
+            t_stat, p_value = stats.ttest_1samp(sample1, request.hypothesized_mean)
+            # Convert numpy types to Python native types
+            t_stat = float(t_stat) if hasattr(t_stat, 'item') else float(t_stat)
+            p_value = float(p_value) if hasattr(p_value, 'item') else float(p_value)
+            result = {
+                "test_type": "One-Sample T-Test",
+                "test_type_zh": "單樣本 T 檢定",
+                "sample_mean": float(sample1.mean()),
+                "sample_std": float(sample1.std()),
+                "sample_size": int(len(sample1)),
+                "hypothesized_mean": float(request.hypothesized_mean),
+                "t_statistic": t_stat,
+                "p_value": p_value,
+                "degrees_of_freedom": int(len(sample1) - 1),
+                "significant_005": bool(p_value < 0.05),
+                "significant_001": bool(p_value < 0.01)
+            }
+        
+        elif request.test_type == 'two-sample':
+            # Two-sample independent t-test (stack format: Y=numeric, X=categorical group)
+            if not request.column2 or request.column2 not in df.columns:
+                raise HTTPException(status_code=400, detail="Group column required for two-sample test.")
+            
+            # column1 = numeric values (Y), column2 = categorical groups (X)
+            df_subset = df[[col1, request.column2]].dropna()
+            df_subset[col1] = pd.to_numeric(df_subset[col1], errors='coerce')
+            df_subset = df_subset.dropna()
+            
+            # Get unique groups
+            groups = df_subset[request.column2].unique()
+            if len(groups) < 2:
+                raise HTTPException(status_code=400, detail=f"Need at least 2 groups in '{request.column2}'. Found: {len(groups)}")
+            
+            # Use first two groups for comparison
+            group1_name = str(groups[0])
+            group2_name = str(groups[1])
+            sample1 = df_subset[df_subset[request.column2] == groups[0]][col1]
+            sample2 = df_subset[df_subset[request.column2] == groups[1]][col1]
+            
+            if len(sample1) < 2 or len(sample2) < 2:
+                raise HTTPException(status_code=400, detail="Not enough data points in one or both groups.")
+            
+            t_stat, p_value = stats.ttest_ind(sample1, sample2)
+            t_stat = float(t_stat) if hasattr(t_stat, 'item') else float(t_stat)
+            p_value = float(p_value) if hasattr(p_value, 'item') else float(p_value)
+            result = {
+                "test_type": "Two-Sample T-Test (Independent)",
+                "test_type_zh": "雙樣本 T 檢定（獨立）",
+                "group1_name": group1_name,
+                "group2_name": group2_name,
+                "sample1_mean": float(sample1.mean()),
+                "sample1_std": float(sample1.std()),
+                "sample1_size": int(len(sample1)),
+                "sample2_mean": float(sample2.mean()),
+                "sample2_std": float(sample2.std()),
+                "sample2_size": int(len(sample2)),
+                "mean_difference": float(sample1.mean() - sample2.mean()),
+                "t_statistic": t_stat,
+                "p_value": p_value,
+                "significant_005": bool(p_value < 0.05),
+                "significant_001": bool(p_value < 0.01)
+            }
+        
+        elif request.test_type == 'paired':
+            # Paired t-test
+            if not request.column2 or request.column2 not in df.columns:
+                raise HTTPException(status_code=400, detail="Second column required for paired test.")
+            
+            # Get both samples fresh
+            sample1_paired = pd.to_numeric(df[col1], errors='coerce')
+            sample2_paired = pd.to_numeric(df[request.column2], errors='coerce')
+            
+            # Create paired DataFrame and drop rows with any NaN
+            paired_df = pd.DataFrame({'s1': sample1_paired, 's2': sample2_paired}).dropna()
+            
+            if len(paired_df) < 2:
+                raise HTTPException(status_code=400, detail="Not enough paired data points.")
+            
+            s1 = paired_df['s1']
+            s2 = paired_df['s2']
+            
+            t_stat, p_value = stats.ttest_rel(s1, s2)
+            t_stat = float(t_stat) if hasattr(t_stat, 'item') else float(t_stat)
+            p_value = float(p_value) if hasattr(p_value, 'item') else float(p_value)
+            diff = s1.values - s2.values
+            result = {
+                "test_type": "Paired T-Test",
+                "test_type_zh": "配對 T 檢定",
+                "sample1_mean": float(s1.mean()),
+                "sample2_mean": float(s2.mean()),
+                "mean_difference": float(diff.mean()),
+                "std_difference": float(diff.std()),
+                "paired_size": int(len(paired_df)),
+                "t_statistic": t_stat,
+                "p_value": p_value,
+                "significant_005": bool(p_value < 0.05),
+                "significant_001": bool(p_value < 0.01)
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown test type: {request.test_type}")
+        
+        return {
+            "status": "success",
+            **result
+        }
+        
+    except Exception as e:
+        print(f"HYPOTHESIS TEST ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+class ChiSquareRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    column1: str
+    column2: str
+
+@app.post("/chi-square-test")
+def chi_square_test(request: ChiSquareRequest):
+    from scipy import stats
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        col1 = request.column1
+        col2 = request.column2
+        
+        if col1 not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col1}' not found.")
+        if col2 not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col2}' not found.")
+        
+        # Create contingency table
+        contingency_table = pd.crosstab(df[col1], df[col2])
+        
+        if contingency_table.empty or contingency_table.shape[0] < 2 or contingency_table.shape[1] < 2:
+            raise HTTPException(status_code=400, detail="Not enough categories for Chi-Square test. Need at least 2x2 table.")
+        
+        # Perform Chi-Square test
+        chi2, p_value, dof, expected_freq = stats.chi2_contingency(contingency_table)
+        
+        # Create readable table
+        observed_table = contingency_table.to_dict('index')
+        expected_table = pd.DataFrame(
+            expected_freq, 
+            index=contingency_table.index, 
+            columns=contingency_table.columns
+        ).round(2).to_dict('index')
+        
+        # Calculate Cramér's V (effect size)
+        n = contingency_table.sum().sum()
+        min_dim = min(contingency_table.shape[0] - 1, contingency_table.shape[1] - 1)
+        cramers_v = np.sqrt(chi2 / (n * min_dim)) if min_dim > 0 else 0
+        
+        return {
+            "status": "success",
+            "chi_square_statistic": float(chi2),
+            "p_value": float(p_value),
+            "degrees_of_freedom": int(dof),
+            "cramers_v": float(cramers_v),
+            "significant_005": bool(p_value < 0.05),
+            "significant_001": bool(p_value < 0.01),
+            "observed_table": observed_table,
+            "expected_table": expected_table,
+            "row_categories": [str(x) for x in contingency_table.index.tolist()],
+            "col_categories": [str(x) for x in contingency_table.columns.tolist()],
+            "table_shape": list(contingency_table.shape)
+        }
+        
+    except Exception as e:
+        print(f"CHI-SQUARE ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+class RegressionRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    x_column: str
+    y_column: str
+
+@app.post("/regression-analysis")
+def regression_analysis(request: RegressionRequest):
+    from scipy import stats
+    from sklearn.linear_model import LinearRegression
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        x_col = request.x_column
+        y_col = request.y_column
+        
+        if x_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{x_col}' not found.")
+        if y_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{y_col}' not found.")
+        
+        # Convert to numeric and clean
+        df[x_col] = pd.to_numeric(df[x_col], errors='coerce')
+        df[y_col] = pd.to_numeric(df[y_col], errors='coerce')
+        df_clean = df[[x_col, y_col]].dropna()
+        
+        if len(df_clean) < 3:
+            raise HTTPException(status_code=400, detail="Not enough data points for regression. Need at least 3.")
+        
+        X = df_clean[x_col].values.reshape(-1, 1)
+        y = df_clean[y_col].values
+        
+        # Fit linear regression
+        model = LinearRegression()
+        model.fit(X, y)
+        
+        y_pred = model.predict(X)
+        
+        # Calculate R² and adjusted R²
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+        
+        n = len(y)
+        p = 1  # number of predictors
+        adj_r_squared = 1 - (1 - r_squared) * (n - 1) / (n - p - 1) if n > p + 1 else r_squared
+        
+        # Calculate standard error and p-value for slope
+        slope = float(model.coef_[0])
+        intercept = float(model.intercept_)
+        
+        # Standard error of the estimate
+        se_estimate = np.sqrt(ss_res / (n - 2)) if n > 2 else 0
+        
+        # Standard error of slope
+        x_mean = np.mean(X)
+        ss_x = np.sum((X.flatten() - x_mean) ** 2)
+        se_slope = se_estimate / np.sqrt(ss_x) if ss_x > 0 else 0
+        
+        # T-statistic and p-value for slope
+        t_stat = slope / se_slope if se_slope > 0 else 0
+        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2)) if n > 2 else 1
+        
+        # Correlation coefficient
+        correlation = np.corrcoef(X.flatten(), y)[0, 1]
+        
+        # Prepare scatter data (sample if too large)
+        scatter_data = []
+        sample_size = min(200, len(df_clean))
+        sample_indices = np.random.choice(len(df_clean), sample_size, replace=False) if len(df_clean) > sample_size else range(len(df_clean))
+        for i in sample_indices:
+            scatter_data.append({
+                "x": float(df_clean.iloc[i][x_col]),
+                "y": float(df_clean.iloc[i][y_col])
+            })
+        
+        # Regression line endpoints
+        x_min, x_max = float(df_clean[x_col].min()), float(df_clean[x_col].max())
+        
+        return {
+            "status": "success",
+            "slope": float(slope),
+            "intercept": float(intercept),
+            "r_squared": float(r_squared),
+            "adj_r_squared": float(adj_r_squared),
+            "correlation": float(correlation) if not np.isnan(correlation) else 0.0,
+            "p_value": float(p_value),
+            "t_statistic": float(t_stat),
+            "se_slope": float(se_slope),
+            "se_estimate": float(se_estimate),
+            "n_observations": int(n),
+            "significant_005": bool(p_value < 0.05),
+            "equation": f"y = {slope:.4f}x + {intercept:.4f}",
+            "scatter_data": scatter_data,
+            "line_start": {"x": float(x_min), "y": float(slope * x_min + intercept)},
+            "line_end": {"x": float(x_max), "y": float(slope * x_max + intercept)}
+        }
+        
+    except Exception as e:
+        print(f"REGRESSION ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+class MultipleRegressionRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    x_columns: List[str]
+    y_column: str
+
+@app.post("/multiple-regression")
+def multiple_regression(request: MultipleRegressionRequest):
+    from scipy import stats
+    from sklearn.linear_model import LinearRegression
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        y_col = request.y_column
+        x_cols = request.x_columns
+        
+        if y_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{y_col}' not found.")
+        
+        missing = [c for c in x_cols if c not in df.columns]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Columns not found: {missing}")
+        
+        if len(x_cols) < 1:
+            raise HTTPException(status_code=400, detail="Need at least 1 predictor column.")
+        
+        # Convert to numeric and clean
+        for col in x_cols + [y_col]:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        df_clean = df[x_cols + [y_col]].dropna()
+        
+        if len(df_clean) < len(x_cols) + 2:
+            raise HTTPException(status_code=400, detail="Not enough data points for regression.")
+        
+        X = df_clean[x_cols].values
+        y = df_clean[y_col].values
+        
+        # Fit multiple regression
+        model = LinearRegression()
+        model.fit(X, y)
+        
+        y_pred = model.predict(X)
+        
+        # Calculate R² and adjusted R²
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+        
+        n = len(y)
+        p = len(x_cols)
+        adj_r_squared = 1 - (1 - r_squared) * (n - 1) / (n - p - 1) if n > p + 1 else r_squared
+        
+        # Coefficients
+        coefficients = []
+        for i, col in enumerate(x_cols):
+            coefficients.append({
+                "variable": col,
+                "coefficient": float(model.coef_[i])
+            })
+        
+        # F-statistic and p-value
+        if p > 0 and n > p + 1 and ss_res > 0:
+            msr = (ss_tot - ss_res) / p  # Mean Square Regression
+            mse = ss_res / (n - p - 1)   # Mean Square Error
+            f_stat = msr / mse if mse > 0 else 0
+            f_p_value = 1 - stats.f.cdf(f_stat, p, n - p - 1)
+        else:
+            f_stat = 0
+            f_p_value = 1
+        
+        return {
+            "status": "success",
+            "intercept": float(model.intercept_),
+            "coefficients": coefficients,
+            "r_squared": float(r_squared),
+            "adj_r_squared": float(adj_r_squared),
+            "f_statistic": float(f_stat),
+            "f_p_value": float(f_p_value),
+            "n_observations": int(n),
+            "n_predictors": int(p),
+            "significant_005": bool(f_p_value < 0.05)
+        }
+        
+    except Exception as e:
+        print(f"MULTIPLE REGRESSION ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+class CorrelationMatrixRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    columns: List[str] = None  # Optional, if None use all numeric columns
+
+@app.post("/correlation-matrix")
+def correlation_matrix(request: CorrelationMatrixRequest):
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        # Select columns
+        if request.columns:
+            missing = [c for c in request.columns if c not in df.columns]
+            if missing:
+                raise HTTPException(status_code=400, detail=f"Columns not found: {missing}")
+            cols = request.columns
+        else:
+            cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if len(cols) < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 numeric columns.")
+        
+        # Convert to numeric and keep only valid numeric columns
+        df_numeric = pd.DataFrame()
+        for col in cols:
+            converted = pd.to_numeric(df[col], errors='coerce')
+            # Only keep columns where at least 3 values are numeric
+            if converted.notna().sum() >= 3:
+                df_numeric[col] = converted
+        
+        if len(df_numeric.columns) < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 columns with numeric data.")
+        
+        if len(df_numeric.dropna()) < 3:
+            # Use pairwise correlation if too many missing values
+            df_subset = df_numeric
+        else:
+            df_subset = df_numeric
+        
+        # Compute correlation matrix
+        corr_matrix = df_subset.corr()
+        
+        # Convert to list format for frontend
+        matrix_data = []
+        for i, row_name in enumerate(corr_matrix.index):
+            for j, col_name in enumerate(corr_matrix.columns):
+                matrix_data.append({
+                    "row": str(row_name),
+                    "col": str(col_name),
+                    "value": round(float(corr_matrix.iloc[i, j]), 4)
+                })
+        
+        return {
+            "status": "success",
+            "columns": [str(c) for c in corr_matrix.columns.tolist()],
+            "matrix_data": matrix_data,
+            "n_observations": int(len(df_subset))
+        }
+        
+    except Exception as e:
+        print(f"CORRELATION MATRIX ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")

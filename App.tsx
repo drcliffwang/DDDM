@@ -10,6 +10,13 @@ import ResultsDashboard from './components/ResultsDashboard';
 import PredictionPanel from './components/PredictionPanel';
 import AnalysisTabs, { AnalysisTab } from './components/AnalysisTabs';
 import MachineLearningMenu, { MLModel } from './components/MachineLearningMenu';
+import BasicAnalysisMenu, { BasicAnalysisType } from './components/BasicAnalysisMenu';
+import TimeSeriesMenu, { TimeSeriesType } from './components/TimeSeriesMenu';
+import ParetoAnalysis from './components/ParetoAnalysis';
+import HypothesisTesting from './components/HypothesisTesting';
+import ChiSquareTest from './components/ChiSquareTest';
+import RegressionAnalysis from './components/RegressionAnalysis';
+import CorrelationMatrix from './components/CorrelationMatrix';
 
 // Environment-aware API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -27,6 +34,8 @@ const App: React.FC = () => {
   // Navigation State
   const [activeTab, setActiveTab] = useState<AnalysisTab>('data-exploration');
   const [activeMLModel, setActiveMLModel] = useState<MLModel>('random-forest');
+  const [activeBasicAnalysis, setActiveBasicAnalysis] = useState<BasicAnalysisType>('correlation-matrix');
+  const [activeTimeSeriesModel, setActiveTimeSeriesModel] = useState<TimeSeriesType>('holt-winters');
 
   const handleDataLoaded = async (newDataset: Dataset) => {
     setDataset(newDataset);
@@ -251,22 +260,48 @@ const App: React.FC = () => {
               </>
             )}
 
-            {/* CONTENT: BASIC ANALYSIS (Placeholder) */}
+            {/* CONTENT: BASIC ANALYSIS */}
             {activeTab === 'basic-analysis' && (
-              <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
-                <BarChart2 size={48} className="mx-auto text-slate-300 mb-4" />
-                <h3 className="text-lg font-medium text-slate-900">基本分析 Coming Soon</h3>
-                <p className="text-slate-500">Basic statistical analysis modules will be available here.</p>
-              </div>
+              <>
+                <BasicAnalysisMenu 
+                  activeAnalysis={activeBasicAnalysis} 
+                  onAnalysisChange={setActiveBasicAnalysis} 
+                />
+                
+                {/* Pareto Analysis */}
+                {activeBasicAnalysis === 'pareto-analysis' && dataset ? (
+                  <ParetoAnalysis dataset={dataset} apiUrl={API_URL} />
+                ) : activeBasicAnalysis === 'hypothesis-testing' && dataset ? (
+                  <HypothesisTesting dataset={dataset} apiUrl={API_URL} />
+                ) : activeBasicAnalysis === 'chi-square' && dataset ? (
+                  <ChiSquareTest dataset={dataset} apiUrl={API_URL} />
+                ) : activeBasicAnalysis === 'regression' && dataset ? (
+                  <RegressionAnalysis dataset={dataset} apiUrl={API_URL} />
+                ) : activeBasicAnalysis === 'correlation-matrix' && dataset ? (
+                  <CorrelationMatrix dataset={dataset} apiUrl={API_URL} />
+                ) : (
+                  <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300 mt-4">
+                    <BarChart2 size={48} className="mx-auto text-slate-300 mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900">{activeBasicAnalysis} - Coming Soon</h3>
+                    <p className="text-slate-500">This analysis module is under development.</p>
+                  </div>
+                )}
+              </>
             )}
 
-             {/* CONTENT: TIME SERIES (Placeholder) */}
+             {/* CONTENT: TIME SERIES */}
              {activeTab === 'time-series' && (
-              <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
-                <Clock size={48} className="mx-auto text-slate-300 mb-4" />
-                <h3 className="text-lg font-medium text-slate-900">時間序列 Coming Soon</h3>
-                <p className="text-slate-500">Time series forecasting and analysis tools will be available here.</p>
-              </div>
+              <>
+                <TimeSeriesMenu 
+                  activeModel={activeTimeSeriesModel} 
+                  onModelChange={setActiveTimeSeriesModel} 
+                />
+                <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300 mt-4">
+                  <Clock size={48} className="mx-auto text-slate-300 mb-4" />
+                  <h3 className="text-lg font-medium text-slate-900">{activeTimeSeriesModel} - Coming Soon</h3>
+                  <p className="text-slate-500">This time series model is under development.</p>
+                </div>
+              </>
             )}
 
             {/* CONTENT: MACHINE LEARNING */}
