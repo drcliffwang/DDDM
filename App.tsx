@@ -19,6 +19,10 @@ import RegressionAnalysis from './components/RegressionAnalysis';
 import CorrelationMatrix from './components/CorrelationMatrix';
 import AnomalyDetection from './components/AnomalyDetection';
 import WordCloud from './components/WordCloud';
+import HoltWinters from './components/HoltWinters';
+import ARIMA from './components/ARIMA';
+import Croston from './components/Croston';
+import STLDecomposition from './components/STLDecomposition';
 
 // Environment-aware API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -194,7 +198,7 @@ const App: React.FC = () => {
             Data Analysis & ML Studio
           </h1>
           <p className="text-lg text-slate-600">
-            Professional tool for data ingestion and Random Forest modeling.
+            Professional Python tool for data analysis.
           </p>
         </div>
       </div>
@@ -302,11 +306,21 @@ const App: React.FC = () => {
                   activeModel={activeTimeSeriesModel} 
                   onModelChange={setActiveTimeSeriesModel} 
                 />
-                <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300 mt-4">
-                  <Clock size={48} className="mx-auto text-slate-300 mb-4" />
-                  <h3 className="text-lg font-medium text-slate-900">{activeTimeSeriesModel} - Coming Soon</h3>
-                  <p className="text-slate-500">This time series model is under development.</p>
-                </div>
+                {activeTimeSeriesModel === 'holt-winters' && dataset ? (
+                  <HoltWinters dataset={dataset} apiUrl={API_URL} />
+                ) : activeTimeSeriesModel === 'arima' && dataset ? (
+                  <ARIMA dataset={dataset} apiUrl={API_URL} />
+                ) : activeTimeSeriesModel === 'croston' && dataset ? (
+                  <Croston dataset={dataset} apiUrl={API_URL} />
+                ) : activeTimeSeriesModel === 'decomposition' && dataset ? (
+                  <STLDecomposition dataset={dataset} apiUrl={API_URL} />
+                ) : (
+                  <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300 mt-4">
+                    <Clock size={48} className="mx-auto text-slate-300 mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900">{activeTimeSeriesModel} - Coming Soon</h3>
+                    <p className="text-slate-500">This time series model is under development.</p>
+                  </div>
+                )}
               </>
             )}
 

@@ -1974,3 +1974,461 @@ def word_cloud(request: WordCloudRequest):
     except Exception as e:
         print(f"WORD CLOUD ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+# Holt-Winters Time Series Forecasting
+class HoltWintersRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    value_column: str
+    date_column: Optional[str] = None
+    seasonal_periods: int = 12
+    forecast_periods: int = 6
+    trend: Optional[str] = "add"  # 'add', 'mul', or None
+    seasonal: Optional[str] = "add"  # 'add', 'mul', or None
+
+@app.post("/holt-winters")
+def holt_winters_forecast(request: HoltWintersRequest):
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        val_col = request.value_column
+        if val_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{val_col}' not found.")
+        
+        # Extract values
+        values = pd.to_numeric(df[val_col], errors='coerce').dropna()
+        
+        if len(values) < 2 * request.seasonal_periods:
+            raise HTTPException(status_code=400, detail=f"Need at least {2 * request.seasonal_periods} data points for seasonal analysis.")
+        
+        # Reset index for proper time series
+        values = values.reset_index(drop=True)
+        
+        # Prepare trend and seasonal parameters
+        trend_type = request.trend if request.trend in ['add', 'mul'] else None
+        seasonal_type = request.seasonal if request.seasonal in ['add', 'mul'] else None
+        
+        # Fit Holt-Winters model
+        try:
+            model = ExponentialSmoothing(
+                values,
+                trend=trend_type,
+                seasonal=seasonal_type,
+                seasonal_periods=request.seasonal_periods,
+                initialization_method='estimated'
+            )
+            fitted = model.fit(optimized=True)
+        except Exception as fit_error:
+            # Fallback to simpler model if complex fails
+            model = ExponentialSmoothing(
+                values,
+                trend='add',
+                seasonal=None,
+                initialization_method='estimated'
+            )
+            fitted = model.fit(optimized=True)
+        
+        # Generate forecast
+        forecast = fitted.forecast(request.forecast_periods)
+        
+        # Get fitted values
+        fitted_values = fitted.fittedvalues
+        
+        # Calculate metrics
+        residuals = values - fitted_values
+        mae = float(abs(residuals).mean())
+        mse = float((residuals ** 2).mean())
+        rmse = float(np.sqrt(mse))
+        mape = float((abs(residuals / values) * 100).mean()) if (values != 0).all() else None
+        
+        # Prepare historical data
+        historical = [
+            {"index": int(i), "actual": float(values.iloc[i]), "fitted": float(fitted_values.iloc[i])}
+            for i in range(len(values))
+        ]
+        
+        # Prepare forecast data
+        forecast_data = [
+            {"index": int(len(values) + i), "forecast": float(forecast.iloc[i])}
+            for i in range(len(forecast))
+        ]
+        
+        # Get model parameters
+        params = {
+            "alpha": float(fitted.params.get('smoothing_level', 0)),
+            "beta": float(fitted.params.get('smoothing_trend', 0)) if fitted.params.get('smoothing_trend') else None,
+            "gamma": float(fitted.params.get('smoothing_seasonal', 0)) if fitted.params.get('smoothing_seasonal') else None,
+        }
+        
+        return {
+            "status": "success",
+            "column": val_col,
+            "total_observations": int(len(values)),
+            "forecast_periods": request.forecast_periods,
+            "seasonal_periods": request.seasonal_periods,
+            "trend_type": trend_type or "none",
+            "seasonal_type": seasonal_type or "none",
+            "metrics": {
+                "mae": round(mae, 4),
+                "mse": round(mse, 4),
+                "rmse": round(rmse, 4),
+                "mape": round(mape, 2) if mape else None,
+                "aic": round(float(fitted.aic), 2) if hasattr(fitted, 'aic') else None,
+                "bic": round(float(fitted.bic), 2) if hasattr(fitted, 'bic') else None
+            },
+            "parameters": params,
+            "historical": historical,
+            "forecast": forecast_data
+        }
+        
+    except Exception as e:
+        print(f"HOLT-WINTERS ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+# ARIMA Time Series Forecasting
+class ARIMARequest(BaseModel):
+    data: List[Dict[str, Any]]
+    value_column: str
+    p: int = 1  # AR order
+    d: int = 1  # Differencing
+    q: int = 1  # MA order
+    forecast_periods: int = 6
+
+@app.post("/arima")
+def arima_forecast(request: ARIMARequest):
+    from statsmodels.tsa.arima.model import ARIMA
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        val_col = request.value_column
+        if val_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{val_col}' not found.")
+        
+        # Extract values
+        values = pd.to_numeric(df[val_col], errors='coerce').dropna()
+        
+        min_samples = request.p + request.d + request.q + 10
+        if len(values) < min_samples:
+            raise HTTPException(status_code=400, detail=f"Need at least {min_samples} data points for ARIMA({request.p},{request.d},{request.q}).")
+        
+        # Reset index for proper time series
+        values = values.reset_index(drop=True)
+        
+        # Fit ARIMA model
+        try:
+            model = ARIMA(values, order=(request.p, request.d, request.q))
+            fitted = model.fit()
+        except Exception as fit_error:
+            print(f"ARIMA fit error: {fit_error}")
+            # Try simpler model
+            model = ARIMA(values, order=(1, 1, 0))
+            fitted = model.fit()
+        
+        # Generate forecast with confidence intervals
+        forecast_result = fitted.get_forecast(steps=request.forecast_periods)
+        forecast_mean = forecast_result.predicted_mean
+        conf_int = forecast_result.conf_int(alpha=0.05)
+        
+        # Get fitted values
+        fitted_values = fitted.fittedvalues
+        
+        # Calculate metrics
+        # Start from d+1 since first d values may be NaN
+        start_idx = request.d
+        actual_trimmed = values.iloc[start_idx:]
+        fitted_trimmed = fitted_values.iloc[start_idx:]
+        
+        residuals = actual_trimmed - fitted_trimmed
+        mae = float(abs(residuals).mean())
+        mse = float((residuals ** 2).mean())
+        rmse = float(np.sqrt(mse))
+        mape = float((abs(residuals / actual_trimmed) * 100).mean()) if (actual_trimmed != 0).all() else None
+        
+        # Prepare historical data
+        historical = []
+        for i in range(len(values)):
+            hist_item = {"index": int(i), "actual": float(values.iloc[i])}
+            if i >= start_idx and i < len(fitted_values):
+                hist_item["fitted"] = float(fitted_values.iloc[i])
+            historical.append(hist_item)
+        
+        # Prepare forecast data
+        forecast_data = []
+        for i in range(len(forecast_mean)):
+            forecast_data.append({
+                "index": int(len(values) + i),
+                "forecast": float(forecast_mean.iloc[i]),
+                "lower_ci": float(conf_int.iloc[i, 0]),
+                "upper_ci": float(conf_int.iloc[i, 1])
+            })
+        
+        return {
+            "status": "success",
+            "column": val_col,
+            "order": {"p": request.p, "d": request.d, "q": request.q},
+            "total_observations": int(len(values)),
+            "forecast_periods": request.forecast_periods,
+            "metrics": {
+                "mae": round(mae, 4),
+                "mse": round(mse, 4),
+                "rmse": round(rmse, 4),
+                "mape": round(mape, 2) if mape else None,
+                "aic": round(float(fitted.aic), 2),
+                "bic": round(float(fitted.bic), 2)
+            },
+            "historical": historical,
+            "forecast": forecast_data
+        }
+        
+    except Exception as e:
+        print(f"ARIMA ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+# Croston's Method for Intermittent Demand
+class CrostonRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    value_column: str
+    alpha: float = 0.1  # Smoothing parameter
+    forecast_periods: int = 6
+
+@app.post("/croston")
+def croston_forecast(request: CrostonRequest):
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        val_col = request.value_column
+        if val_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{val_col}' not found.")
+        
+        # Extract values
+        values = pd.to_numeric(df[val_col], errors='coerce').fillna(0).values
+        
+        if len(values) < 10:
+            raise HTTPException(status_code=400, detail="Need at least 10 data points for Croston's method.")
+        
+        alpha = request.alpha
+        
+        # Croston's method implementation
+        # Separate demand sizes and intervals
+        demand_times = []  # Indices where demand occurs
+        demand_sizes = []  # Non-zero demand values
+        
+        for i, v in enumerate(values):
+            if v > 0:
+                demand_times.append(i)
+                demand_sizes.append(v)
+        
+        if len(demand_sizes) < 3:
+            raise HTTPException(status_code=400, detail="Not enough non-zero demands. Croston's method is for intermittent demand data.")
+        
+        # Calculate inter-demand intervals
+        intervals = [demand_times[i] - demand_times[i-1] for i in range(1, len(demand_times))]
+        
+        # Initialize smoothed values
+        z = demand_sizes[0]  # Smoothed demand size
+        p = intervals[0] if intervals else 1  # Smoothed interval
+        
+        # Lists to track smoothed values
+        z_values = [z]
+        p_values = [p]
+        
+        # Apply exponential smoothing to demand sizes
+        for i in range(1, len(demand_sizes)):
+            z = alpha * demand_sizes[i] + (1 - alpha) * z
+            z_values.append(z)
+        
+        # Apply exponential smoothing to intervals
+        for i in range(1, len(intervals)):
+            p = alpha * intervals[i] + (1 - alpha) * p
+            p_values.append(p)
+        
+        # Final smoothed values
+        final_z = z_values[-1]
+        final_p = max(p_values[-1], 0.001)  # Avoid division by zero
+        
+        # Croston's forecast = z / p (demand rate per period)
+        croston_forecast_value = final_z / final_p
+        
+        # Calculate fitted values
+        fitted = []
+        current_z = demand_sizes[0]
+        current_p = intervals[0] if intervals else 1
+        demand_idx = 0
+        interval_idx = 0
+        
+        for i in range(len(values)):
+            if i in demand_times and demand_idx < len(demand_sizes):
+                if demand_idx > 0:
+                    current_z = alpha * demand_sizes[demand_idx] + (1 - alpha) * current_z
+                demand_idx += 1
+            if demand_idx > 1 and interval_idx < len(intervals):
+                current_p = alpha * intervals[interval_idx] + (1 - alpha) * current_p
+                interval_idx += 1
+            fitted_value = current_z / max(current_p, 0.001)
+            fitted.append(fitted_value)
+        
+        # Calculate metrics
+        actual_values = values
+        fitted_values = np.array(fitted)
+        residuals = actual_values - fitted_values
+        mae = float(abs(residuals).mean())
+        rmse = float(np.sqrt((residuals ** 2).mean()))
+        # MAPE only for non-zero actual values
+        nonzero_mask = actual_values > 0
+        if nonzero_mask.sum() > 0:
+            mape = float((abs(residuals[nonzero_mask] / actual_values[nonzero_mask]) * 100).mean())
+        else:
+            mape = None
+        
+        # Calculate demand statistics
+        zero_count = int((values == 0).sum())
+        nonzero_count = int((values > 0).sum())
+        avg_demand = float(np.mean([v for v in values if v > 0])) if nonzero_count > 0 else 0
+        avg_interval = float(np.mean(intervals)) if intervals else 0
+        
+        # Prepare historical data
+        historical = [
+            {"index": int(i), "actual": float(values[i]), "fitted": float(fitted[i])}
+            for i in range(len(values))
+        ]
+        
+        # Prepare forecast data (constant forecast for intermittent demand)
+        forecast_data = [
+            {"index": int(len(values) + i), "forecast": float(croston_forecast_value)}
+            for i in range(request.forecast_periods)
+        ]
+        
+        return {
+            "status": "success",
+            "column": val_col,
+            "alpha": float(alpha),
+            "total_observations": int(len(values)),
+            "forecast_periods": request.forecast_periods,
+            "demand_stats": {
+                "zero_periods": zero_count,
+                "nonzero_periods": nonzero_count,
+                "intermittence_ratio": round(float(zero_count / len(values) * 100), 2),
+                "avg_demand_size": round(avg_demand, 4),
+                "avg_interval": round(avg_interval, 2)
+            },
+            "smoothed_values": {
+                "final_z": round(float(final_z), 4),
+                "final_p": round(float(final_p), 4),
+                "demand_rate": round(float(croston_forecast_value), 4)
+            },
+            "metrics": {
+                "mae": round(mae, 4),
+                "rmse": round(rmse, 4),
+                "mape": round(mape, 2) if mape else None
+            },
+            "historical": historical,
+            "forecast": forecast_data
+        }
+        
+    except Exception as e:
+        print(f"CROSTON ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
+
+# STL Decomposition (Seasonal-Trend using LOESS)
+class STLDecompositionRequest(BaseModel):
+    data: List[Dict[str, Any]]
+    value_column: str
+    seasonal_period: int = 12
+
+@app.post("/stl-decomposition")
+def stl_decomposition(request: STLDecompositionRequest):
+    from statsmodels.tsa.seasonal import STL
+    
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="The dataset is empty.")
+        
+        val_col = request.value_column
+        if val_col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{val_col}' not found.")
+        
+        # Extract values
+        values = pd.to_numeric(df[val_col], errors='coerce').dropna()
+        
+        min_samples = 2 * request.seasonal_period + 1
+        if len(values) < min_samples:
+            raise HTTPException(status_code=400, detail=f"Need at least {min_samples} data points for STL with period {request.seasonal_period}.")
+        
+        # Reset index
+        values = values.reset_index(drop=True)
+        
+        # Perform STL decomposition
+        stl = STL(values, period=request.seasonal_period, robust=True)
+        result = stl.fit()
+        
+        trend = result.trend
+        seasonal = result.seasonal
+        residual = result.resid
+        
+        # Calculate strength metrics
+        # Trend strength: 1 - Var(residual) / Var(trend + residual)
+        var_resid = float(residual.var())
+        var_trend_resid = float((trend + residual).var())
+        trend_strength = max(0, 1 - var_resid / var_trend_resid) if var_trend_resid > 0 else 0
+        
+        # Seasonal strength: 1 - Var(residual) / Var(seasonal + residual)
+        var_seas_resid = float((seasonal + residual).var())
+        seasonal_strength = max(0, 1 - var_resid / var_seas_resid) if var_seas_resid > 0 else 0
+        
+        # Prepare data for charts
+        decomposition_data = []
+        for i in range(len(values)):
+            decomposition_data.append({
+                "index": int(i),
+                "original": float(values.iloc[i]),
+                "trend": float(trend.iloc[i]),
+                "seasonal": float(seasonal.iloc[i]),
+                "residual": float(residual.iloc[i])
+            })
+        
+        # Get seasonal pattern (one cycle)
+        seasonal_pattern = []
+        for i in range(request.seasonal_period):
+            # Average seasonal component for each position in the cycle
+            pattern_vals = [decomposition_data[j]["seasonal"] for j in range(i, len(decomposition_data), request.seasonal_period)]
+            seasonal_pattern.append({
+                "period": int(i + 1),
+                "value": float(np.mean(pattern_vals))
+            })
+        
+        return {
+            "status": "success",
+            "column": val_col,
+            "seasonal_period": request.seasonal_period,
+            "total_observations": int(len(values)),
+            "strength": {
+                "trend_strength": round(float(trend_strength), 4),
+                "seasonal_strength": round(float(seasonal_strength), 4)
+            },
+            "statistics": {
+                "original_mean": round(float(values.mean()), 4),
+                "original_std": round(float(values.std()), 4),
+                "trend_mean": round(float(trend.mean()), 4),
+                "seasonal_range": round(float(seasonal.max() - seasonal.min()), 4),
+                "residual_std": round(float(residual.std()), 4)
+            },
+            "decomposition": decomposition_data,
+            "seasonal_pattern": seasonal_pattern
+        }
+        
+    except Exception as e:
+        print(f"STL DECOMPOSITION ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Python Error: {str(e)}")
