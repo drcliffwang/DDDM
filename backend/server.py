@@ -32,16 +32,18 @@ app = FastAPI()
 # Global storage for trained model
 model_artifact = {}
 
-# Get environment (Railway sets this automatically)
-environment = os.getenv('RAILWAY_ENVIRONMENT', 'development')
+# Get environment
+environment = os.getenv('ENVIRONMENT', 'development')
 
-# CORS - allow both local and production
+# CORS - allow local development, Docker, and production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",           # Local React dev server
-        "https://dddm-smoky.vercel.app",   # Your Vercel deployment
-        "https://*.vercel.app",            # Any Vercel deployment (fallback)
+        "http://localhost:3000",           # Docker frontend (local)
+        "http://127.0.0.1:3000",           # Docker frontend (local alt)
+        "https://a2psdm.com",              # Production domain
+        "https://www.a2psdm.com",          # Production domain with www
     ],
     allow_credentials=True,
     allow_methods=["*"],
